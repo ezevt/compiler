@@ -1,4 +1,5 @@
-0 while dup 10 < do
+
+
+0 1 while over over + dup 100 < do
     dup dump
-    1 +
 end

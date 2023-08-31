@@ -26,6 +26,12 @@ enum class Intrinsic {
     dup,
     over,
     swap,
+    syscall1,
+    syscall2,
+    syscall3,
+    syscall4,
+    syscall5,
+    syscall6,
 };
 
 enum class Keyword {
@@ -233,6 +239,45 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    push rbx\n";
                 out << "    push rax\n";
                 out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::syscall1) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    syscall\n";
+            } else if (intrinsic == Intrinsic::syscall2) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    pop rsi\n";
+                out << "    syscall\n";
+            } else if (intrinsic == Intrinsic::syscall3) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    pop rsi\n";
+                out << "    pop rdx\n";
+                out << "    syscall\n";
+            } else if (intrinsic == Intrinsic::syscall4) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    pop rsi\n";
+                out << "    pop rdx\n";
+                out << "    pop r10\n";
+                out << "    syscall\n";
+            } else if (intrinsic == Intrinsic::syscall5) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    pop rsi\n";
+                out << "    pop rdx\n";
+                out << "    pop r10\n";
+                out << "    pop r8\n";
+                out << "    syscall\n";
+            } else if (intrinsic == Intrinsic::syscall6) {
+                out << "    pop rax\n";
+                out << "    pop rdi\n";
+                out << "    pop rsi\n";
+                out << "    pop rdx\n";
+                out << "    pop r10\n";
+                out << "    pop r8\n";
+                out << "    pop r9\n";
+                out << "    syscall\n";
             }
 
         }
@@ -258,6 +303,12 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "!=", Intrinsic::NE },
     { "dup", Intrinsic::dup },
     { "over", Intrinsic::over },
+    { "syscall1", Intrinsic::syscall1 },
+    { "syscall2", Intrinsic::syscall2 },
+    { "syscall3", Intrinsic::syscall3 },
+    { "syscall4", Intrinsic::syscall4 },
+    { "syscall5", Intrinsic::syscall5 },
+    { "syscall6", Intrinsic::syscall6 },
 };
 
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
