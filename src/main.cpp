@@ -16,6 +16,7 @@ struct Loc {
 enum class Intrinsic {
     plus,
     minus,
+    mul,
     dump,
     EQ,
     GT,
@@ -26,6 +27,7 @@ enum class Intrinsic {
     dup,
     over,
     swap,
+    drop,
     syscall1,
     syscall2,
     syscall3,
@@ -162,6 +164,11 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rbx\n";
                 out << "    sub rbx, rax\n";
                 out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::mul) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    mul rbx\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::dump) {
                 out << "    pop rdi\n";
                 out << "    call dump\n";
@@ -239,6 +246,13 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    push rbx\n";
                 out << "    push rax\n";
                 out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::swap) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    push rax\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::drop) {
+                out << "    pop rax\n";
             } else if (intrinsic == Intrinsic::syscall1) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -294,6 +308,7 @@ std::string Generate_linux_x86_64(Program& program) {
 std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "+", Intrinsic::plus },
     { "-", Intrinsic::minus },
+    { "*", Intrinsic::mul },
     { "dump", Intrinsic::dump },
     { "=", Intrinsic::EQ },
     { ">", Intrinsic::GT },
@@ -303,6 +318,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "!=", Intrinsic::NE },
     { "dup", Intrinsic::dup },
     { "over", Intrinsic::over },
+    { "drop", Intrinsic::drop },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
