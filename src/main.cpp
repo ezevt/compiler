@@ -13,15 +13,30 @@ struct Loc {
     int col;
 };
 
-enum Intrinsic {
+enum class Intrinsic {
     plus,
     minus,
-    dump
+    dump,
+    EQ,
+    GT,
+    LT,
+    GE,
+    LE,
+    NE
 };
 
-enum OpType {
+enum class Keyword {
+    IF,
+    ELSE,
+    END
+};
+
+enum class OpType {
     push,
-    intrinsic
+    intrinsic,
+    IF,
+    ELSE,
+    END,
 };
 
 struct Op {
@@ -30,16 +45,16 @@ struct Op {
     int value;
 };
 
-enum TokenType {
+enum class TokenType {
     word,
     integer,
-    keyword // TODO: Implement
+    keyword
 };
 
 struct Token {
     TokenType type;
     Loc loc;
-    union { int integer; const char* string; };
+    union { int integer; const char* string; Keyword keyword; };
 };
 
 struct Program {
@@ -101,9 +116,20 @@ std::string Generate_linux_x86_64(Program& program) {
     out << "global _start\n";
     out << "_start:\n";
 
-    for (Op op : program.ops) {
+    for (int i = 0; i < program.ops.size(); i++) {
+        Op op = program.ops[i];
+        out << "addr_" << i << ":\n";
         if (op.type == OpType::push) {
             out << "    push " << op.value << "\n";
+        } else if (op.type == OpType::IF) {
+            out << "    pop rax\n";
+            out << "    test rax, rax\n";
+            out << "    jz addr_" << op.value << "\n";
+        } else if (op.type == OpType::ELSE) {
+            out << "    jmp addr_" << op.value << "\n";
+        } else if (op.type == OpType::END) {
+            if (i+1 != op.value)
+                out << "    jmp addr_" << op.value << "\n";
         } else if (op.type == OpType::intrinsic) {
 
             Intrinsic intrinsic = (Intrinsic)op.value;
@@ -120,6 +146,70 @@ std::string Generate_linux_x86_64(Program& program) {
             } else if (intrinsic == Intrinsic::dump) {
                 out << "    pop rdi\n";
                 out << "    call dump\n";
+            } else if (intrinsic == Intrinsic::EQ) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmove rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::GT) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovg rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::LT) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovl rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::GE) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovge rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::GE) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovge rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::GE) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovge rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::LE) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovle rcx, rdx\n";
+                out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::NE) {
+                out << "    mov rcx, 0\n";
+                out << "    mov rdx, 1\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    cmp rax, rbx\n";
+                out << "    cmovne rcx, rdx\n";
+                out << "    push rcx\n";
             }
 
         }
@@ -136,6 +226,18 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "+", Intrinsic::plus },
     { "-", Intrinsic::minus },
     { "dump", Intrinsic::dump },
+    { "=", Intrinsic::EQ },
+    { ">", Intrinsic::GT },
+    { "<", Intrinsic::LT },
+    { ">=", Intrinsic::GE },
+    { "<=", Intrinsic::LE },
+    { "!=", Intrinsic::NE },
+};
+
+std::unordered_map<std::string, Keyword> KeywordDictionary = {
+    { "if", Keyword::IF },
+    { "else", Keyword::ELSE },
+    { "end", Keyword::END }
 };
 
 bool IsInteger(const std::string& s)
@@ -146,6 +248,8 @@ bool IsInteger(const std::string& s)
 }
 
 Program TokensToProgram(std::vector<Token>& tokens) {
+
+    std::vector<int> stack;
     std::vector<Token> rtokens = std::move(tokens);
     std::reverse(rtokens.begin(), rtokens.end());
     Program program;
@@ -159,7 +263,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 Op op;
                 op.loc = token.loc;
                 op.type = OpType::intrinsic;
-                op.value = IntrinsicDictionary[token.string];
+                op.value = (int)IntrinsicDictionary[token.string];
                 program.ops.push_back(op);
             } else {
                 Error(token.loc, "unknown word '%s'", token.string);
@@ -172,8 +276,57 @@ Program TokensToProgram(std::vector<Token>& tokens) {
             op.value = token.integer;
             
             program.ops.push_back(op);
+        } else if (token.type == TokenType::keyword) {
+            if (token.keyword == Keyword::IF) {
+                stack.push_back(program.ops.size());
+
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::IF;
+
+                program.ops.push_back(op);
+            } else if (token.keyword == Keyword::ELSE) {
+                int ifip = stack.back();
+                stack.pop_back();
+
+                stack.push_back(program.ops.size());
+                
+                if (program.ops[ifip].type != OpType::IF) {
+                    Error(program.ops[ifip].loc, "'else' can only be used in 'if' blocks");
+                    exit(-1);
+                }
+
+                program.ops[ifip].value = program.ops.size() + 1;
+
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::ELSE;
+
+                program.ops.push_back(op);
+
+            } else if (token.keyword == Keyword::END) {
+                int blockip = stack.back();
+                stack.pop_back();
+
+                if (program.ops[blockip].type == OpType::IF || program.ops[blockip].type == OpType::ELSE) {
+                    program.ops[blockip].value = program.ops.size();
+                } else {
+                    Error(program.ops[blockip].loc, "'end' can only close 'if' or 'else' blocks");
+                    exit(-1);
+                }
+                
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::END;
+                op.value = program.ops.size() + 1;
+
+                program.ops.push_back(op);
+            }
         }
     }
+
+    if (stack.size() != 0)
+        Error(program.ops[stack.back()].loc, "unclosed block");
 
     return program;
 }
@@ -211,6 +364,13 @@ std::vector<Token> Tokenize(const std::string& filepath) {
                     newToken.type = TokenType::integer;
                     newToken.loc = Loc { filepath.c_str(), line, col };
                     newToken.integer = std::stoi(buf);
+
+                    tokens.push_back(newToken);
+                } else if (KeywordDictionary.find(buf) != KeywordDictionary.end()) {
+                    Token newToken;
+                    newToken.type = TokenType::keyword;
+                    newToken.loc = Loc { filepath.c_str(), line, col };
+                    newToken.keyword = KeywordDictionary[buf];
 
                     tokens.push_back(newToken);
                 } else {

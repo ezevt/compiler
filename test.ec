@@ -1,5 +1,7 @@
 
 
-10 12 +
-2 -
-dump
+10 11 > if
+    1 dump
+else
+    2 dump
+end
