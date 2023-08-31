@@ -22,7 +22,10 @@ enum class Intrinsic {
     LT,
     GE,
     LE,
-    NE
+    NE,
+    dup,
+    over,
+    swap,
 };
 
 enum class Keyword {
@@ -131,8 +134,8 @@ std::string Generate_linux_x86_64(Program& program) {
             if (i+1 != op.value)
                 out << "    jmp addr_" << op.value << "\n";
         } else if (op.type == OpType::intrinsic) {
-
             Intrinsic intrinsic = (Intrinsic)op.value;
+
             if (intrinsic == Intrinsic::plus) {
                 out << "    pop rax\n";
                 out << "    pop rbx\n";
@@ -210,6 +213,16 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    cmp rax, rbx\n";
                 out << "    cmovne rcx, rdx\n";
                 out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::dup) {
+                out << "    pop rax\n";
+                out << "    push rax\n";
+                out << "    push rax\n";
+            } else if (intrinsic == Intrinsic::over) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    push rbx\n";
+                out << "    push rax\n";
+                out << "    push rbx\n";
             }
 
         }
@@ -232,6 +245,8 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { ">=", Intrinsic::GE },
     { "<=", Intrinsic::LE },
     { "!=", Intrinsic::NE },
+    { "dup", Intrinsic::dup },
+    { "over", Intrinsic::over },
 };
 
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
