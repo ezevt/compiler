@@ -31,7 +31,9 @@ enum class Intrinsic {
 enum class Keyword {
     IF,
     ELSE,
-    END
+    WHILE,
+    DO,
+    END,
 };
 
 enum class OpType {
@@ -39,6 +41,8 @@ enum class OpType {
     intrinsic,
     IF,
     ELSE,
+    WHILE,
+    DO,
     END,
 };
 
@@ -51,7 +55,7 @@ struct Op {
 enum class TokenType {
     word,
     integer,
-    keyword
+    keyword,
 };
 
 struct Token {
@@ -130,6 +134,12 @@ std::string Generate_linux_x86_64(Program& program) {
             out << "    jz addr_" << op.value << "\n";
         } else if (op.type == OpType::ELSE) {
             out << "    jmp addr_" << op.value << "\n";
+        } else if (op.type == OpType::WHILE) {
+            out << "    ;; while\n";
+        } else if (op.type == OpType::DO) {
+            out << "    pop rax\n";
+            out << "    test rax, rax\n";
+            out << "    jz addr_" << op.value << "\n";
         } else if (op.type == OpType::END) {
             if (i+1 != op.value)
                 out << "    jmp addr_" << op.value << "\n";
@@ -228,6 +238,7 @@ std::string Generate_linux_x86_64(Program& program) {
         }
     }
 
+    out << "    addr_" << program.ops.size() << ":\n";
     out << "    mov rax, 60\n";
     out << "    mov rdi, 0\n";
     out << "    syscall\n";
@@ -252,6 +263,8 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "if", Keyword::IF },
     { "else", Keyword::ELSE },
+    { "while", Keyword::WHILE },
+    { "do", Keyword::DO },
     { "end", Keyword::END }
 };
 
@@ -318,24 +331,59 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 op.type = OpType::ELSE;
 
                 program.ops.push_back(op);
+            } else if (token.keyword == Keyword::WHILE) {
+                stack.push_back(program.ops.size());
+                
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::WHILE;
 
+                program.ops.push_back(op);
+            } else if (token.keyword == Keyword::DO) {
+                int whileip = stack.back();
+                stack.pop_back();
+
+                stack.push_back(program.ops.size());
+                
+                if (program.ops[whileip].type != OpType::WHILE) {
+                    Error(program.ops[whileip].loc, "'do' can only be used in 'while' blocks");
+                    exit(-1);
+                }
+
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::DO;
+                op.value = whileip;
+
+                program.ops.push_back(op);
             } else if (token.keyword == Keyword::END) {
                 int blockip = stack.back();
                 stack.pop_back();
 
                 if (program.ops[blockip].type == OpType::IF || program.ops[blockip].type == OpType::ELSE) {
                     program.ops[blockip].value = program.ops.size();
+
+                    Op op;
+                    op.loc = token.loc;
+                    op.type = OpType::END;
+                    op.value = program.ops.size() + 1;
+
+                    program.ops.push_back(op);
+                } else if (program.ops[blockip].type == OpType::DO) {
+                    Op op;
+                    op.loc = token.loc;
+                    op.type = OpType::END;
+                    op.value = program.ops[blockip].value;
+
+                    program.ops[blockip].value = program.ops.size()+1;
+
+                    program.ops.push_back(op);
                 } else {
                     Error(program.ops[blockip].loc, "'end' can only close 'if' or 'else' blocks");
                     exit(-1);
                 }
                 
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::END;
-                op.value = program.ops.size() + 1;
-
-                program.ops.push_back(op);
+                
             }
         }
     }

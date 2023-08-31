@@ -1,11 +1,4 @@
-
-
-10 11 > if
-    1 dump
-else
-    2 dump
+0 while dup 10 < do
+    dup dump
+    1 +
 end
-
-10 dup + dump
-
-5 9 over - dump dump 
