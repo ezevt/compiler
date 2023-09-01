@@ -348,7 +348,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
     std::vector<Token> rtokens = std::move(tokens);
     std::reverse(rtokens.begin(), rtokens.end());
     Program program;
-
+    
     while (rtokens.size() > 0) {
         Token token = rtokens.back();
         rtokens.pop_back();
