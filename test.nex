@@ -1,8 +1,11 @@
-const x 4 end
-const y 3 end
-const loop x y * end
+const chars 5 end
+const size chars 8 * end
+alloc memory size end
 
-1 while dup loop <= do
-    dup dump
-    1 +
-end
+72  memory 0  + s8
+111 memory 8  + s8
+108 memory 16 + s8
+97  memory 24 + s8
+10  memory 32 + s8
+
+size memory 0 1 syscall3 drop

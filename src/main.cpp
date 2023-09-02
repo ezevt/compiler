@@ -34,6 +34,14 @@ enum class Intrinsic {
     syscall4,
     syscall5,
     syscall6,
+    read8,
+    store8,
+    read16,
+    store16,
+    read32,
+    store32,
+    read64,
+    store64,
 };
 
 enum class Keyword {
@@ -43,10 +51,12 @@ enum class Keyword {
     DO,
     END,
     CONST,
+    ALLOC,
 };
 
 enum class OpType {
     push,
+    push_addr,
     intrinsic,
     IF,
     ELSE,
@@ -75,6 +85,7 @@ struct Token {
 
 struct Program {
     std::vector<Op> ops;
+    int memory;
 };
 
 void Error(const Loc& loc, const char* format, ...) {
@@ -137,6 +148,10 @@ std::string Generate_linux_x86_64(Program& program) {
         out << "addr_" << i << ":\n";
         if (op.type == OpType::push) {
             out << "    push " << op.value << "\n";
+        } else if (op.type == OpType::push_addr) {
+            out << "    mov rax, mem\n";
+            out << "    add rax, " << op.value << "\n";
+            out << "    push rax\n";
         } else if (op.type == OpType::IF) {
             out << "    pop rax\n";
             out << "    test rax, rax\n";
@@ -258,17 +273,20 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall2) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
                 out << "    pop rsi\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall3) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
                 out << "    pop rsi\n";
                 out << "    pop rdx\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall4) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -276,6 +294,7 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rdx\n";
                 out << "    pop r10\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall5) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -284,6 +303,7 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop r10\n";
                 out << "    pop r8\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall6) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -293,8 +313,44 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop r8\n";
                 out << "    pop r9\n";
                 out << "    syscall\n";
+                out << "    push rax\n";
+            } else if (intrinsic == Intrinsic::read8) {
+                out << "    pop rax\n";
+                out << "    xor rbx, rbx\n";
+                out << "    mov bl, [rax]\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::store8) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    mov [rax], bl\n";
+            } else if (intrinsic == Intrinsic::read16) {
+                out << "    pop rax\n";
+                out << "    xor rbx, rbx\n";
+                out << "    mov bx, [rax]\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::store16) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    mov [rax], bx\n";
+            } else if (intrinsic == Intrinsic::read32) {
+                out << "    pop rax\n";
+                out << "    xor rbx, rbx\n";
+                out << "    mov ebx, [rax]\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::store32) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    mov [rax], ebx\n";
+            } else if (intrinsic == Intrinsic::read64) {
+                out << "    pop rax\n";
+                out << "    xor rbx, rbx\n";
+                out << "    mov rbx, [rax]\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::store64) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    mov [rax], rbx\n";
             }
-
         }
     }
 
@@ -302,6 +358,8 @@ std::string Generate_linux_x86_64(Program& program) {
     out << "    mov rax, 60\n";
     out << "    mov rdi, 0\n";
     out << "    syscall\n";
+    out << "segment .bss\n";
+    out << "    mem: resb " << program.memory << "\n";
 
     return out.str();
 }
@@ -326,6 +384,14 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "syscall4", Intrinsic::syscall4 },
     { "syscall5", Intrinsic::syscall5 },
     { "syscall6", Intrinsic::syscall6 },
+    { "r8", Intrinsic::read8 },
+    { "s8", Intrinsic::store8 },
+    { "r16", Intrinsic::read16 },
+    { "s16", Intrinsic::store16 },
+    { "r32", Intrinsic::read32 },
+    { "s32", Intrinsic::store32 },
+    { "r64", Intrinsic::read64 },
+    { "s64", Intrinsic::store64 },
 };
 
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
@@ -334,7 +400,8 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "while", Keyword::WHILE },
     { "do", Keyword::DO },
     { "end", Keyword::END },
-    { "const", Keyword::CONST }
+    { "const", Keyword::CONST },
+    { "alloc", Keyword::ALLOC },
 };
 
 bool IsInteger(const std::string& s)
@@ -346,6 +413,7 @@ bool IsInteger(const std::string& s)
 
 struct ParseContext {
     std::unordered_map<std::string, int> constants;
+    std::unordered_map<std::string, int> allocations;
 };
 
 int EvalConstant(ParseContext& context, std::vector<Token>& rtokens) {
@@ -440,6 +508,11 @@ void CheckNameRedefinition(const ParseContext& context, const std::string& name,
         Error(loc, "redefinition of constant '%s'", name.c_str());
         exit(-1);
     }
+
+    if (context.allocations.find(name) != context.allocations.end()) {
+        Error(loc, "redefinition of allocation '%s'", name.c_str());
+        exit(-1);
+    }
 }
 
 Program TokensToProgram(std::vector<Token>& tokens) {
@@ -467,6 +540,13 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 op.loc = token.loc;
                 op.type = OpType::push;
                 op.value = context.constants[token.string];
+
+                program.ops.push_back(op);
+            } else if (context.allocations.find(token.string) != context.allocations.end()) {
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::push_addr;
+                op.value = context.allocations[token.string];
 
                 program.ops.push_back(op);
             } else {
@@ -576,6 +656,24 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 int val = EvalConstant(context, rtokens);
 
                 context.constants.insert({ constName, val });
+            } else if (token.keyword == Keyword::ALLOC) {
+                Token nameTok = rtokens.back();
+                rtokens.pop_back();
+
+                if (nameTok.type != TokenType::word) {
+                    Error(token.loc, "expected name");
+                    exit(-1);
+                }
+
+                const char* allocName = nameTok.string;
+                Loc allocLoc = nameTok.loc;
+
+                CheckNameRedefinition(context, allocName, allocLoc);
+
+                int val = EvalConstant(context, rtokens);
+
+                context.allocations.insert({ allocName, program.memory });
+                program.memory += val;
             }
         }
     }
