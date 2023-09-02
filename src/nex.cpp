@@ -635,7 +635,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                     program.ops.push_back(op);
                 } else {
-                    Error(program.ops[blockip].loc, "'end' can only close 'if' or 'else' blocks");
+                    Error(program.ops[blockip].loc, "'end' can only close 'if', 'else' or 'while-do' blocks");
                     exit(-1);
                 }
                 

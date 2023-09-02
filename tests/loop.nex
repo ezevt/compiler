@@ -1,0 +1,6 @@
+const iterations 10 end
+
+1 while dup iterations <= do
+    dup dump
+    1 +
+end
