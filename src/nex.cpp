@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include <string.h>
 
-#define RETURN_STACK_CAP_X86_64 4096
+const int RETURN_STACK_CAP_X86_64 = 4096;
 
 struct Loc {
     const char* file;
@@ -752,7 +752,6 @@ std::vector<Token> Tokenize(const std::string& filepath) {
         file << input.rdbuf();
     }
 
-
     std::vector<Token> tokens;
     std::string lineStr;
     int line = 1;
@@ -767,11 +766,23 @@ std::vector<Token> Tokenize(const std::string& filepath) {
             if (!std::isspace(lineStr[i])) {
                 int col = i+1;
 
+                bool comment = false;
+
                 for (; i < lineStr.length(); i++) {
                     if (std::isspace(lineStr[i])) break;
 
+                    if (lineStr[i] == '/') {
+                        if (i+1 < lineStr.length() && lineStr[i+1] == '/') {
+                            comment = true;
+                        }  
+
+                        break;
+                    }
+
                     buf.push_back(lineStr[i]);
                 }
+
+                if (buf.length() == 0) break;
 
                 if (IsInteger(buf)) {
                     Token newToken = Token(TokenType::integer, { filepath.c_str(), line, col }, std::stoi(buf));
@@ -788,6 +799,8 @@ std::vector<Token> Tokenize(const std::string& filepath) {
                 }                
 
                 buf.clear();
+
+                if (comment) break;
             }
         }
 
