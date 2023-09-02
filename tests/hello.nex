@@ -1,11 +1,18 @@
 const chars 5 end
 const size chars 8 * end
-alloc memory size end
+alloc buf size end
 
-72  memory 0  + s8
-111 memory 8  + s8
-108 memory 16 + s8
-97  memory 24 + s8
-10  memory 32 + s8
+fun genBuf
+    72  buf 0  + s8
+    111 buf 8  + s8
+    108 buf 16 + s8
+    97  buf 24 + s8
+    10  buf 32 + s8
+end
 
-size memory 0 1 syscall3 drop
+fun printHola
+    genBuf
+    size buf 0 1 syscall3 drop
+end
+
+printHola

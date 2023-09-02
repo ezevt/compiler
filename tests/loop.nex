@@ -1,6 +1,10 @@
-const iterations 10 end
+const iterations 3 end
 
-1 while dup iterations <= do
-    dup dump
-    1 +
+fun loop
+    1 while dup iterations <= do
+        dup dump
+        1 +
+    end
 end
+
+loop

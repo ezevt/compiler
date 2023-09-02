@@ -4,8 +4,11 @@
 #include <fstream>
 #include <unordered_map>
 #include <algorithm>
+#include <optional>
 #include <stdarg.h>
 #include <string.h>
+
+#define RETURN_STACK_CAP_X86_64 4096
 
 struct Loc {
     const char* file;
@@ -52,6 +55,7 @@ enum class Keyword {
     END,
     CONST,
     ALLOC,
+    FUN,
 };
 
 enum class OpType {
@@ -63,12 +67,19 @@ enum class OpType {
     WHILE,
     DO,
     END,
+    skip_fun,
+    fun,
+    ret,
+    call,
 };
 
 struct Op {
     OpType type;
     Loc loc;
     int value;
+
+    Op();
+    Op(OpType _type, Loc _loc, int _value = 0) : type(_type), loc(_loc), value(_value) {}
 };
 
 enum class TokenType {
@@ -81,6 +92,12 @@ struct Token {
     TokenType type;
     Loc loc;
     union { int integer; const char* string; Keyword keyword; };
+
+    Token() = default;
+    Token(TokenType _type, Loc _loc) : type(_type), loc(_loc) {}
+    Token(TokenType _type, Loc _loc, int _integer) : type(_type), loc(_loc), integer(_integer) {}
+    Token(TokenType _type, Loc _loc, const char* _string) : type(_type), loc(_loc), string(_string) {}
+    Token(TokenType _type, Loc _loc, Keyword _keyword) : type(_type), loc(_loc), keyword(_keyword) {}
 };
 
 struct Program {
@@ -142,6 +159,8 @@ std::string Generate_linux_x86_64(Program& program) {
     out << "    ret\n";
     out << "global _start\n";
     out << "_start:\n";
+    out << "    mov rax, ret_stack_end\n";
+    out << "    mov [ret_stack_rsp], rax\n";
 
     for (int i = 0; i < program.ops.size(); i++) {
         Op op = program.ops[i];
@@ -167,6 +186,21 @@ std::string Generate_linux_x86_64(Program& program) {
         } else if (op.type == OpType::END) {
             if (i+1 != op.value)
                 out << "    jmp addr_" << op.value << "\n";
+        } else if (op.type == OpType::skip_fun) {
+            out << "    jmp addr_" << op.value << "\n";
+        } else if (op.type == OpType::fun) {
+            out << "    mov [ret_stack_rsp], rsp\n";
+            out << "    mov rsp, rax\n";
+        } else if (op.type == OpType::call) {
+            out << "    mov rax, rsp\n";
+            out << "    mov rsp, [ret_stack_rsp]\n";
+            out << "    call addr_" << op.value << "\n";
+            out << "    mov [ret_stack_rsp], rsp\n";
+            out << "    mov rsp, rax\n";
+        } else if (op.type == OpType::ret) {
+            out << "    mov rax, rsp\n";
+            out << "    mov rsp, [ret_stack_rsp]\n";
+            out << "    ret\n";
         } else if (op.type == OpType::intrinsic) {
             Intrinsic intrinsic = (Intrinsic)op.value;
 
@@ -354,11 +388,14 @@ std::string Generate_linux_x86_64(Program& program) {
         }
     }
 
-    out << "    addr_" << program.ops.size() << ":\n";
+    out << "addr_" << program.ops.size() << ":\n";
     out << "    mov rax, 60\n";
     out << "    mov rdi, 0\n";
     out << "    syscall\n";
     out << "segment .bss\n";
+    out << "    ret_stack_rsp: resq 1\n";
+    out << "    ret_stack: resb " << RETURN_STACK_CAP_X86_64 << "\n";
+    out << "    ret_stack_end: resq 1\n";
     out << "    mem: resb " << program.memory << "\n";
 
     return out.str();
@@ -378,6 +415,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "dup", Intrinsic::dup },
     { "over", Intrinsic::over },
     { "drop", Intrinsic::drop },
+    { "swap", Intrinsic::swap },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
@@ -402,6 +440,7 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "end", Keyword::END },
     { "const", Keyword::CONST },
     { "alloc", Keyword::ALLOC },
+    { "fun", Keyword::FUN },
 };
 
 bool IsInteger(const std::string& s)
@@ -414,6 +453,9 @@ bool IsInteger(const std::string& s)
 struct ParseContext {
     std::unordered_map<std::string, int> constants;
     std::unordered_map<std::string, int> allocations;
+    std::unordered_map<std::string, int> functions;
+
+    std::optional<int> currentFunction;
 };
 
 int EvalConstant(ParseContext& context, std::vector<Token>& rtokens) {
@@ -513,6 +555,11 @@ void CheckNameRedefinition(const ParseContext& context, const std::string& name,
         Error(loc, "redefinition of allocation '%s'", name.c_str());
         exit(-1);
     }
+
+    if (context.allocations.find(name) != context.allocations.end()) {
+        Error(loc, "redefinition of function '%s'", name.c_str());
+        exit(-1);
+    }
 }
 
 Program TokensToProgram(std::vector<Token>& tokens) {
@@ -529,24 +576,19 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
         if (token.type == TokenType::word) {
             if (IntrinsicDictionary.find(token.string) != IntrinsicDictionary.end()) {
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::intrinsic;
-                op.value = (int)IntrinsicDictionary[token.string];
+                Op op(OpType::intrinsic, token.loc, (int)IntrinsicDictionary[token.string]);
 
                 program.ops.push_back(op);
             } else if (context.constants.find(token.string) != context.constants.end()) {
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::push;
-                op.value = context.constants[token.string];
+                Op op(OpType::push, token.loc, context.constants[token.string]);
 
                 program.ops.push_back(op);
             } else if (context.allocations.find(token.string) != context.allocations.end()) {
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::push_addr;
-                op.value = context.allocations[token.string];
+                Op op(OpType::push_addr, token.loc, context.allocations[token.string]);
+
+                program.ops.push_back(op);
+            } else if (context.functions.find(token.string) != context.functions.end()) {
+                Op op(OpType::call, token.loc, context.functions[token.string]);
 
                 program.ops.push_back(op);
             } else {
@@ -554,19 +596,14 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 exit(-1);
             }
         }  else if (token.type == TokenType::integer) {
-            Op op;
-            op.loc = token.loc;
-            op.type = OpType::push;
-            op.value = token.integer;
-            
+            Op op(OpType::push, token.loc, token.integer);
+
             program.ops.push_back(op);
         } else if (token.type == TokenType::keyword) {
             if (token.keyword == Keyword::IF) {
                 stack.push_back(program.ops.size());
 
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::IF;
+                Op op(OpType::IF, token.loc);
 
                 program.ops.push_back(op);
             } else if (token.keyword == Keyword::ELSE) {
@@ -582,17 +619,13 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                 program.ops[ifip].value = program.ops.size() + 1;
 
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::ELSE;
+                Op op(OpType::ELSE, token.loc);
 
                 program.ops.push_back(op);
             } else if (token.keyword == Keyword::WHILE) {
                 stack.push_back(program.ops.size());
                 
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::WHILE;
+                Op op(OpType::WHILE, token.loc);
 
                 program.ops.push_back(op);
             } else if (token.keyword == Keyword::DO) {
@@ -606,10 +639,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                     exit(-1);
                 }
 
-                Op op;
-                op.loc = token.loc;
-                op.type = OpType::DO;
-                op.value = whileip;
+                Op op(OpType::DO, token.loc, whileip);
 
                 program.ops.push_back(op);
             } else if (token.keyword == Keyword::END) {
@@ -619,21 +649,23 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 if (program.ops[blockip].type == OpType::IF || program.ops[blockip].type == OpType::ELSE) {
                     program.ops[blockip].value = program.ops.size();
 
-                    Op op;
-                    op.loc = token.loc;
-                    op.type = OpType::END;
-                    op.value = program.ops.size() + 1;
+                    Op op(OpType::END, token.loc, program.ops.size() + 1);
 
                     program.ops.push_back(op);
                 } else if (program.ops[blockip].type == OpType::DO) {
-                    Op op;
-                    op.loc = token.loc;
-                    op.type = OpType::END;
-                    op.value = program.ops[blockip].value;
+                    Op op(OpType::END, token.loc, program.ops[blockip].value);
 
                     program.ops[blockip].value = program.ops.size()+1;
 
                     program.ops.push_back(op);
+                } else if (program.ops[blockip].type == OpType::skip_fun) {
+                    Op op(OpType::ret, token.loc);
+
+                    program.ops[blockip].value = program.ops.size()+1;
+
+                    program.ops.push_back(op);
+
+                    context.currentFunction = {};
                 } else {
                     Error(program.ops[blockip].loc, "'end' can only close 'if', 'else' or 'while-do' blocks");
                     exit(-1);
@@ -674,6 +706,35 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                 context.allocations.insert({ allocName, program.memory });
                 program.memory += val;
+            } else if (token.keyword == Keyword::FUN) {
+                if (context.currentFunction.has_value()) {
+                    Error(token.loc, "a function definition is not allowed here");
+                    exit(-1);
+                }
+
+                stack.push_back(program.ops.size());
+                context.currentFunction = { program.ops.size() };
+                
+                Op skipOp(OpType::skip_fun, token.loc);
+                program.ops.push_back(skipOp);
+
+                Op funOp(OpType::fun, token.loc);
+                program.ops.push_back(funOp);
+                
+                Token nameTok = rtokens.back();
+                rtokens.pop_back();
+
+                if (nameTok.type != TokenType::word) {
+                    Error(token.loc, "expected name");
+                    exit(-1);
+                }
+
+                const char* funName = nameTok.string;
+                Loc funLoc = nameTok.loc;
+
+                CheckNameRedefinition(context, funName, funLoc);
+
+                context.functions.insert({ funName, context.currentFunction.value()+1 });
             }
         }
     }
@@ -713,24 +774,15 @@ std::vector<Token> Tokenize(const std::string& filepath) {
                 }
 
                 if (IsInteger(buf)) {
-                    Token newToken;
-                    newToken.type = TokenType::integer;
-                    newToken.loc = Loc { filepath.c_str(), line, col };
-                    newToken.integer = std::stoi(buf);
+                    Token newToken = Token(TokenType::integer, { filepath.c_str(), line, col }, std::stoi(buf));
 
                     tokens.push_back(newToken);
                 } else if (KeywordDictionary.find(buf) != KeywordDictionary.end()) {
-                    Token newToken;
-                    newToken.type = TokenType::keyword;
-                    newToken.loc = Loc { filepath.c_str(), line, col };
-                    newToken.keyword = KeywordDictionary[buf];
+                    Token newToken = Token(TokenType::keyword, { filepath.c_str(), line, col }, KeywordDictionary[buf]);
 
                     tokens.push_back(newToken);
                 } else {
-                    Token newToken;
-                    newToken.type = TokenType::word;
-                    newToken.loc = Loc { filepath.c_str(), line, col };
-                    newToken.string = strdup(buf.c_str());
+                    Token newToken(TokenType::word, { filepath.c_str(), line, col }, strdup(buf.c_str()));
 
                     tokens.push_back(newToken);
                 }                
