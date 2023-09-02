@@ -42,6 +42,7 @@ enum class Keyword {
     WHILE,
     DO,
     END,
+    CONST,
 };
 
 enum class OpType {
@@ -332,7 +333,8 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "else", Keyword::ELSE },
     { "while", Keyword::WHILE },
     { "do", Keyword::DO },
-    { "end", Keyword::END }
+    { "end", Keyword::END },
+    { "const", Keyword::CONST }
 };
 
 bool IsInteger(const std::string& s)
@@ -342,12 +344,111 @@ bool IsInteger(const std::string& s)
     return !s.empty() && it == s.end();
 }
 
+struct ParseContext {
+    std::unordered_map<std::string, int> constants;
+};
+
+int EvalConstant(ParseContext& context, std::vector<Token>& rtokens) {
+    std::vector<int> stack;
+    Token token;
+
+    while (rtokens.size() > 0) {
+        token = rtokens.back();
+        rtokens.pop_back();
+
+        if (token.type == TokenType::keyword) {
+            if (token.keyword == Keyword::END) {
+                break;
+            } else {
+                Error(token.loc, "unexpected keyword");
+                exit(-1);
+            }
+        } else if (token.type == TokenType::integer) {
+            stack.push_back(token.integer);
+        } else if (token.type == TokenType::word) {
+            if (IntrinsicDictionary.find(token.string) != IntrinsicDictionary.end()) {
+                Intrinsic intrinsic = IntrinsicDictionary[token.string];
+
+                if (intrinsic == Intrinsic::plus) {
+                    if (stack.size() < 2) {
+                        Error(token.loc, "not enough arguments for the '%s' intrinsic", token.string);
+                        exit(-1);
+                    }
+
+                    int a = stack.back();
+                    stack.pop_back();
+                    int b = stack.back();
+                    stack.pop_back();
+
+                    stack.push_back(a+b);
+                } else if (intrinsic == Intrinsic::minus) {
+                    if (stack.size() < 2) {
+                        Error(token.loc, "not enough arguments for the '%s' intrinsic", token.string);
+                        exit(-1);
+                    }
+
+                    int b = stack.back();
+                    stack.pop_back();
+                    int a = stack.back();
+                    stack.pop_back();
+
+                    stack.push_back(a-b);
+                } else if (intrinsic == Intrinsic::mul) {
+                    if (stack.size() < 2) {
+                        Error(token.loc, "not enough arguments for the '%s' intrinsic", token.string);
+                        exit(-1);
+                    }
+
+                    int a = stack.back();
+                    stack.pop_back();
+                    int b = stack.back();
+                    stack.pop_back();
+
+                    stack.push_back(a*b);
+                } else if (intrinsic == Intrinsic::drop) {
+                    if (stack.size() < 2) {
+                        Error(token.loc, "not enough arguments for the '%s' intrinsic", token.string);
+                        exit(-1);
+                    }
+
+                    stack.pop_back();
+                }
+            } else if (context.constants.find(token.string) != context.constants.end()) {
+                stack.push_back(context.constants[token.string]);
+            } else {
+                Error(token.loc, "unexpected identifier");
+                exit(-1);
+            }
+        }
+    }
+
+    if (stack.size() != 1) {
+        Error(token.loc, "compile-time evaluation must be a single number");
+        exit(-1);
+    }
+
+    return stack.back();
+}
+
+void CheckNameRedefinition(const ParseContext& context, const std::string& name, const Loc& loc) {
+    if (IntrinsicDictionary.find(name) != IntrinsicDictionary.end()) {
+        Error(loc, "redefinition of intrinsic '%s'", name.c_str());
+        exit(-1);
+    }
+
+    if (context.constants.find(name) != context.constants.end()) {
+        Error(loc, "redefinition of constant '%s'", name.c_str());
+        exit(-1);
+    }
+}
+
 Program TokensToProgram(std::vector<Token>& tokens) {
 
     std::vector<int> stack;
     std::vector<Token> rtokens = std::move(tokens);
     std::reverse(rtokens.begin(), rtokens.end());
     Program program;
+    ParseContext context;
     
     while (rtokens.size() > 0) {
         Token token = rtokens.back();
@@ -359,6 +460,14 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 op.loc = token.loc;
                 op.type = OpType::intrinsic;
                 op.value = (int)IntrinsicDictionary[token.string];
+
+                program.ops.push_back(op);
+            } else if (context.constants.find(token.string) != context.constants.end()) {
+                Op op;
+                op.loc = token.loc;
+                op.type = OpType::push;
+                op.value = context.constants[token.string];
+
                 program.ops.push_back(op);
             } else {
                 Error(token.loc, "unknown word '%s'", token.string);
@@ -450,7 +559,23 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                     exit(-1);
                 }
                 
-                
+            } else if (token.keyword == Keyword::CONST) {
+                Token nameTok = rtokens.back();
+                rtokens.pop_back();
+
+                if (nameTok.type != TokenType::word) {
+                    Error(token.loc, "expected name");
+                    exit(-1);
+                }
+
+                const char* constName = nameTok.string;
+                Loc constLoc = nameTok.loc;
+
+                CheckNameRedefinition(context, constName, constLoc);
+
+                int val = EvalConstant(context, rtokens);
+
+                context.constants.insert({ constName, val });
             }
         }
     }

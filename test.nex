@@ -1,7 +1,8 @@
+const x 4 end
+const y 3 end
+const loop x y * end
 
-4 5 * dump
-
-0 while dup 10 < do
+1 while dup loop <= do
     dup dump
     1 +
 end
