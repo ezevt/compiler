@@ -1,6 +1,6 @@
-
 alloc max_fib 32 end
-fun fib // int: max
+
+fun fib // int
     max_fib s32
     0 1 while dup max_fib r32 <= do 
         dup dump

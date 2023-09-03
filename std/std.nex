@@ -1,0 +1,33 @@
+const stdin  0 end
+const stdout 1 end
+const stderr 2 end
+
+fun strlen
+    0 swap
+    
+    while dup r8 0 != do
+        1 + // increment ptr
+        swap
+        1 + // increment counter
+        swap
+    end drop // drop ptr
+    // return counter
+end
+
+fun write // int ptr int
+    1 syscall3
+end
+
+fun fprint // ptr int
+    over strlen
+    rot rot
+    write drop
+end
+
+fun print
+    stdout fprint
+end
+
+fun eprint
+    stderr fprint
+end

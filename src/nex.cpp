@@ -32,6 +32,7 @@ enum class Intrinsic {
     over,
     swap,
     drop,
+    rot,
     syscall1,
     syscall2,
     syscall3,
@@ -57,6 +58,7 @@ enum class Keyword {
     CONST,
     ALLOC,
     FUN,
+    INCLUDE,
 };
 
 enum class OpType {
@@ -106,7 +108,7 @@ struct Token {
 struct Program {
     std::vector<Op> ops;
     std::vector<const char*> strings;
-    int memory;
+    int memory = 0;
 };
 
 void Error(const Loc& loc, const char* format, ...) {
@@ -309,6 +311,13 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    push rbx\n";
             } else if (intrinsic == Intrinsic::drop) {
                 out << "    pop rax\n";
+            } else if (intrinsic == Intrinsic::rot) {
+                out << "    pop rax\n";
+                out << "    pop rbx\n";
+                out << "    pop rcx\n";
+                out << "    push rbx\n";
+                out << "    push rax\n";
+                out << "    push rcx\n";
             } else if (intrinsic == Intrinsic::syscall1) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -443,6 +452,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "over", Intrinsic::over },
     { "drop", Intrinsic::drop },
     { "swap", Intrinsic::swap },
+    { "rot", Intrinsic::rot },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
@@ -468,6 +478,7 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "const", Keyword::CONST },
     { "alloc", Keyword::ALLOC },
     { "fun", Keyword::FUN },
+    { "include", Keyword::INCLUDE },
 };
 
 struct ParseContext {
@@ -581,6 +592,8 @@ void CheckNameRedefinition(const ParseContext& context, const std::string& name,
         exit(-1);
     }
 }
+
+std::vector<Token> Tokenize(const std::string& filepath);
 
 Program TokensToProgram(std::vector<Token>& tokens) {
 
@@ -761,6 +774,21 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 CheckNameRedefinition(context, funName, funLoc);
 
                 context.functions.insert({ funName, context.currentFunction.value()+1 });
+            } else if (token.keyword == Keyword::INCLUDE) {
+                Token pathTok = rtokens.back();
+                rtokens.pop_back();
+
+                if (pathTok.type != TokenType::string) {
+                    Error(token.loc, "expected path");
+                    exit(-1);
+                }
+
+                const char* includePath = pathTok.string;
+                Loc includeLoc = pathTok.loc;
+
+                std::vector<Token> includeTokens = Tokenize(includePath);
+                std::reverse(includeTokens.begin(), includeTokens.end());
+                rtokens.insert(rtokens.end(), includeTokens.begin(), includeTokens.end());
             }
         }
     }
@@ -789,6 +817,8 @@ std::vector<Token> Tokenize(const std::string& filepath) {
     std::string lineStr;
     int line = 1;
 
+    const char* filepathd = strdup(filepath.c_str());
+
     while (std::getline(input, lineStr)) {
 
         std::stringstream lineStream(lineStr);
@@ -799,6 +829,8 @@ std::vector<Token> Tokenize(const std::string& filepath) {
             if (!std::isspace(lineStr[i])) {
                 buf.clear();
                 int col = i+1;
+
+                Loc loc = { filepathd, line, col };
 
                 bool comment = false;
 
@@ -823,11 +855,11 @@ std::vector<Token> Tokenize(const std::string& filepath) {
                     }
 
                     if (lineStr[i] != '"') {
-                        Error({ filepath.c_str(), line, col }, "unclosed string literal");
+                        Error(loc, "unclosed string literal");
                         exit(-1);
                     }
 
-                    Token newToken(TokenType::string, { filepath.c_str(), line, col }, strdup(buf.c_str()));
+                    Token newToken(TokenType::string, loc, strdup(buf.c_str()));
                     tokens.push_back(newToken);
 
                     i++;
@@ -853,15 +885,15 @@ std::vector<Token> Tokenize(const std::string& filepath) {
                 if (buf.length() == 0) break;
 
                 if (IsInteger(buf)) {
-                    Token newToken = Token(TokenType::integer, { filepath.c_str(), line, col }, std::stoi(buf));
+                    Token newToken = Token(TokenType::integer, loc, std::stoi(buf));
 
                     tokens.push_back(newToken);
                 } else if (KeywordDictionary.find(buf) != KeywordDictionary.end()) {
-                    Token newToken = Token(TokenType::keyword, { filepath.c_str(), line, col }, KeywordDictionary[buf]);
+                    Token newToken = Token(TokenType::keyword, loc, KeywordDictionary[buf]);
 
                     tokens.push_back(newToken);
                 } else {
-                    Token newToken(TokenType::word, { filepath.c_str(), line, col }, strdup(buf.c_str()));
+                    Token newToken(TokenType::word, loc, strdup(buf.c_str()));
 
                     tokens.push_back(newToken);
                 }                
