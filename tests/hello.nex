@@ -1,18 +1,1 @@
-const chars 5 end
-const size chars 8 * end
-alloc buf size end
-
-fun genBuf
-    72  buf 0  + s8
-    111 buf 8  + s8
-    108 buf 16 + s8
-    97  buf 24 + s8
-    10  buf 32 + s8
-end
-
-fun printHola
-    genBuf
-    size buf 0 1 syscall3 drop
-end
-
-printHola
+5 "Hello" 0 1 syscall3

@@ -7,6 +7,7 @@
 #include <optional>
 #include <stdarg.h>
 #include <string.h>
+#include <iomanip>
 
 const int RETURN_STACK_CAP_X86_64 = 4096;
 
@@ -61,6 +62,7 @@ enum class Keyword {
 enum class OpType {
     push,
     push_addr,
+    push_string,
     intrinsic,
     IF,
     ELSE,
@@ -86,6 +88,7 @@ enum class TokenType {
     word,
     integer,
     keyword,
+    string,
 };
 
 struct Token {
@@ -102,6 +105,7 @@ struct Token {
 
 struct Program {
     std::vector<Op> ops;
+    std::vector<const char*> strings;
     int memory;
 };
 
@@ -167,6 +171,8 @@ std::string Generate_linux_x86_64(Program& program) {
         out << "addr_" << i << ":\n";
         if (op.type == OpType::push) {
             out << "    push " << op.value << "\n";
+        } else if (op.type == OpType::push_string) {
+            out << "    push str_" << op.value << "\n";
         } else if (op.type == OpType::push_addr) {
             out << "    mov rax, mem\n";
             out << "    add rax, " << op.value << "\n";
@@ -392,6 +398,27 @@ std::string Generate_linux_x86_64(Program& program) {
     out << "    mov rax, 60\n";
     out << "    mov rdi, 0\n";
     out << "    syscall\n";
+    out << "segment .data\n";
+    for (int i = 0; i < program.strings.size(); i++) {
+        std::string s = program.strings[i];
+        std::ostringstream oss;
+        oss << "str_" << i << ": db ";
+
+        std::vector<unsigned char> bytes(s.begin(), s.end());
+
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            oss << "0x" << std::setw(2) << std::setfill('0') << std::hex << static_cast<int>(bytes[i]);
+            if (i != bytes.size() - 1) {
+                oss << ",";
+            }
+        }
+
+        oss << ",0x0";
+
+        oss << "\n";
+
+        out << oss.str();
+    }
     out << "segment .bss\n";
     out << "    ret_stack_rsp: resq 1\n";
     out << "    ret_stack: resb " << RETURN_STACK_CAP_X86_64 << "\n";
@@ -442,13 +469,6 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "alloc", Keyword::ALLOC },
     { "fun", Keyword::FUN },
 };
-
-bool IsInteger(const std::string& s)
-{
-    std::string::const_iterator it = s.begin();
-    while (it != s.end() && std::isdigit(*it)) ++it;
-    return !s.empty() && it == s.end();
-}
 
 struct ParseContext {
     std::unordered_map<std::string, int> constants;
@@ -599,6 +619,12 @@ Program TokensToProgram(std::vector<Token>& tokens) {
             Op op(OpType::push, token.loc, token.integer);
 
             program.ops.push_back(op);
+        }  else if (token.type == TokenType::string) {
+            Op op(OpType::push_string, token.loc, program.strings.size());
+            
+            program.strings.push_back(token.string);
+
+            program.ops.push_back(op);
         } else if (token.type == TokenType::keyword) {
             if (token.keyword == Keyword::IF) {
                 stack.push_back(program.ops.size());
@@ -745,18 +771,25 @@ Program TokensToProgram(std::vector<Token>& tokens) {
     return program;
 }
 
+bool IsInteger(const std::string& s)
+{
+    std::string::const_iterator it = s.begin();
+    while (it != s.end() && std::isdigit(*it)) ++it;
+    return !s.empty() && it == s.end();
+}
+
 std::vector<Token> Tokenize(const std::string& filepath) {
-    std::stringstream file;
-    {
-        std::fstream input(filepath, std::ios::in);
-        file << input.rdbuf();
+    std::ifstream input(filepath);
+    if (!input.is_open()) {
+        std::cout << "could not open file '" << filepath << "'" << std::endl;
+        return {};
     }
 
     std::vector<Token> tokens;
     std::string lineStr;
     int line = 1;
 
-    while (std::getline(file, lineStr)) {
+    while (std::getline(input, lineStr)) {
 
         std::stringstream lineStream(lineStr);
 
@@ -764,9 +797,44 @@ std::vector<Token> Tokenize(const std::string& filepath) {
 
         for (int i = 0; i < lineStr.length(); i++) {
             if (!std::isspace(lineStr[i])) {
+                buf.clear();
                 int col = i+1;
 
                 bool comment = false;
+
+                if (lineStr[i] == '"') {
+                    i++;
+                    while (i < lineStr.length() && lineStr[i] != '"') {
+                        if (lineStr[i] == '\\') {
+                            i++;
+
+                            if (i >= lineStr.length())
+                                break;
+
+                            if (lineStr[i] == 'n') {
+                                buf.push_back('\n');
+                            } else if (lineStr[i] == '"') {
+                                buf.push_back('"');
+                            }
+                        } else {
+                            buf.push_back(lineStr[i]);
+                        }
+                        i++;
+                    }
+
+                    if (lineStr[i] != '"') {
+                        Error({ filepath.c_str(), line, col }, "unclosed string literal");
+                        exit(-1);
+                    }
+
+                    Token newToken(TokenType::string, { filepath.c_str(), line, col }, strdup(buf.c_str()));
+                    tokens.push_back(newToken);
+
+                    i++;
+                    buf.clear();
+
+                    continue;
+                }
 
                 for (; i < lineStr.length(); i++) {
                     if (std::isspace(lineStr[i])) break;

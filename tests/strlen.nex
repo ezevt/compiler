@@ -1,0 +1,28 @@
+fun inc32
+    dup r32 1 +
+    swap s32
+end
+
+alloc strlen.counter 32 end
+fun strlen
+    0 strlen.counter s32
+    
+    while dup r8 0 != do
+        strlen.counter inc32
+        1 +
+    end
+    drop
+    strlen.counter r32
+end
+
+fun write
+    1 syscall3
+end
+
+fun printf
+    dup strlen swap
+    0
+    write
+end
+
+"holass\n" printf
