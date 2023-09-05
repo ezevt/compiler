@@ -1,3 +1,8 @@
 include "std/std.nex"
 
-"Hello!\n" print
+alloc buf 32 end
+
+"What is yout name?\n" print
+"> " print
+32 buf input
+"Hello " print buf print "!\n" print
