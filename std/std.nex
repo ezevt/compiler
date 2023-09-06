@@ -346,6 +346,7 @@ fun fstat SYS_fstat syscall2 end
 fun close SYS_close syscall1 end
 fun exit SYS_exit syscall1 drop end
 fun mmap SYS_mmap syscall6 end
+fun munmap SYS_munmap syscall2 end
 fun clock_nanosleep SYS_clock_nanosleep syscall4 end
 
 const timespec 16 end

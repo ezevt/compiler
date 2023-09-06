@@ -2,7 +2,7 @@ include "std/std.nex"
 
 // command line arguments are stored in the stack before the program runs
 alloc argc u32 end
-alloc argv 128 end
+alloc argv 128 end // max of 16 arguments
 fun StoreArgs
     argc s32
 
@@ -41,15 +41,16 @@ fun OpenFile // ptr
         1 exit
     end
 
-    alloc content string end
-    statbuf stat.st_size r64 content s64
+    alloc content pointer end
+    alloc contentLength u64 end
+    statbuf stat.st_size r64 contentLength s64
     
 
     0                        // offset
     fd r64                   // fd
     MAP_PRIVATE              // flags
     PROT_READ                // prot
-    content r64              // length
+    contentLength r64        // length
     NULL                     // addr
     mmap
     content s64
@@ -62,7 +63,9 @@ fun OpenFile // ptr
     content r64 print
 
     fd r64 close drop
+    contentLength r64 content r64 munmap
 end
+
 
 fun main
     StoreArgs
