@@ -28,7 +28,7 @@ const SYS_mprotect 10 end
 const SYS_munmap 11 end
 const SYS_brk 12 end
 const SYS_rt_sigaction 13 end
-const SYS_rt_sigfunmask 14 end
+const SYS_rt_sigprocmask 14 end
 const SYS_rt_sigreturn 15 end
 const SYS_ioctl 16 end
 const SYS_pread64 17 end
@@ -324,8 +324,8 @@ const SYS_syncfs 306 end
 const SYS_sendmmsg 307 end
 const SYS_setns 308 end
 const SYS_getcpu 309 end
-const SYS_funess_vm_readv 310 end
-const SYS_funess_vm_writev 311 end
+const SYS_process_vm_readv 310 end
+const SYS_process_vm_writev 311 end
 const SYS_kcmp 312 end
 const SYS_finit_module 313 end
 
