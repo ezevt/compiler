@@ -817,6 +817,7 @@ std::vector<Token> Tokenize(const std::string& filepath) {
     std::ifstream input(filepath);
     if (!input.is_open()) {
         std::cout << "could not open file '" << filepath << "'" << std::endl;
+        exit(-1);
         return {};
     }
 
