@@ -1,0 +1,80 @@
+include "std/std.nex"
+
+// command line arguments are stored in the stack before the program runs
+alloc argc u32 end
+alloc argv 128 end
+fun StoreArgs
+    argc s32
+
+    0 while dup argc r32 < do
+        swap over 8 *
+        argv +
+        s64
+        1 +
+    end drop
+end
+
+fun ReadArg // int
+    8 * argv + r64
+end
+
+fun OpenFile // ptr
+    alloc filepath string end
+    filepath s64
+
+    0
+    O_RDONLY
+    filepath r64
+    AT_FDCWD
+    openat 
+
+    dup 0 < if
+        "could not open file '" eprint filepath r64 eprint "'\n" eprint
+        1 exit
+    end
+
+    alloc fd u64 end
+    fd s64
+    alloc statbuf stat end
+    statbuf fd r64 fstat 0 < if
+        "could not determine size of file '" eprint filepath r64 eprint "'\n" eprint
+        1 exit
+    end
+
+    alloc content string end
+    statbuf stat.st_size r64 content s64
+    
+
+    0                        // offset
+    fd r64                   // fd
+    MAP_PRIVATE              // flags
+    PROT_READ                // prot
+    content r64              // length
+    NULL                     // addr
+    mmap
+    content s64
+
+    content r64 0 < if
+        "ERROR: could not map file " eprint filepath r64 eprint "'\n" eprint
+        1 exit
+    end
+
+    content r64 print
+
+    fd r64 close drop
+end
+
+fun main
+    StoreArgs
+
+    argc r32 2 < if
+        "not enough arguments, expected filepath\n" eprint
+        1 exit
+    end
+
+    1 ReadArg TokenizeFile
+    
+end
+
+
+main

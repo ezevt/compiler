@@ -28,6 +28,7 @@ enum class Intrinsic {
     GE,
     LE,
     NE,
+    AND,
     dup,
     over,
     swap,
@@ -294,6 +295,11 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    cmp rax, rbx\n";
                 out << "    cmovne rcx, rdx\n";
                 out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::AND) {
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    and rbx, rax\n";
+                out << "    push rbx\n";
             } else if (intrinsic == Intrinsic::dup) {
                 out << "    pop rax\n";
                 out << "    push rax\n";
@@ -453,6 +459,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "drop", Intrinsic::drop },
     { "swap", Intrinsic::swap },
     { "rot", Intrinsic::rot },
+    { "and", Intrinsic::AND },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
