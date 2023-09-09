@@ -1,5 +1,87 @@
 include "std/std.nex"
 
+const OpType.push 0 end
+const OpType.intrinsic 1 end
+
+const Op 40 end // u64 u64 ptr u32 u32
+fun Op.type      0 + end // u64
+fun Op.data      8 + end // u64
+fun Op.filepath 16 + end // ptr
+fun Op.line     24 + end // u64
+fun Op.col      32 + end // u64
+
+const Intrinsic.plus 0 end
+const Intrinsic.dump 1 end
+
+const OP_CAP 1024 end
+alloc OpBuf Op OP_CAP * end
+alloc OpIdx u64 end
+0 OpIdx s64
+
+fun PushOp // type data file line col
+    OpIdx r64 Op * OpBuf +
+    dup Op.col      rot swap s64
+    dup Op.line     rot swap s64
+    dup Op.filepath rot swap s64
+    dup Op.data     rot swap s64
+    dup Op.type     rot swap s64
+    drop
+    OpIdx inc64
+end
+
+fun PrintOps
+    0 while dup OpIdx r64 < do
+        dup Op * OpBuf +
+        over printd
+        "->" print
+        dup Op.filepath r64 print
+        ":" print
+        dup Op.line r64 printd
+        ":" print
+        dup Op.col  r64 printd
+        ": type: " print
+        dup Op.type r64 printd
+        " data: " print
+        dup Op.data r64 printd
+        "\n" print
+        drop
+
+        1 +
+    end drop
+end
+
+fun CreateAndPushOp // str filepath line col
+    alloc file u64 end
+    alloc line u64 end
+    alloc col  u64 end
+    col  s64
+    line s64
+    file s64
+
+    dup "+" streq if
+        OpType.intrinsic Intrinsic.plus file r64 line r64 col r64 PushOp
+    else dup "dump" streq if
+        OpType.intrinsic Intrinsic.dump file r64 line r64 col r64 PushOp
+    else dup ParseInteger if
+        OpType.push swap file r64 line r64 col r64 PushOp
+    else
+        drop
+
+        file r64 print
+        ":" print
+        line r64 printd
+        ":" print
+        col r64 printd
+        ": ERROR: unknown word '" print
+        dup
+        "'\n" print
+
+        1 exit
+    end end end
+
+    drop
+end
+
 // command line arguments are stored in the stack before the program runs
 alloc argc u32 end
 alloc argv 128 end // max of 16 arguments
@@ -14,11 +96,11 @@ fun StoreArgs
     end drop
 end
 
-fun ReadArg // int
+fun ReadArg // int: idx
     8 * argv + r64
 end
 
-fun OpenFile // ptr
+fun ParseFile // ptr: filepath
     alloc filepath string end
     filepath s64
 
@@ -60,7 +142,57 @@ fun OpenFile // ptr
         1 exit
     end
 
-    content r64 print
+    alloc line u64 end
+    alloc col u64 end
+    alloc bufCol u64 end
+    alloc buf 256 end
+    alloc bufIdx u32 end
+
+    alloc index u64 end
+    
+    1 line s64
+    1 col s64
+    1 bufCol s64
+    0 index s64
+    while content r64 index r64 + r8 0 != do
+        
+        content r64 index r64 + r8
+        dup IsSpace if
+            bufIdx r32 0 > if
+                0
+                buf bufIdx r32 +
+                s8 // make it null-terminated
+                
+                buf filepath r64 line r64 bufCol r64 CreateAndPushOp
+                
+                0 bufIdx s32
+            end
+        else
+            bufIdx r32 0 = if
+                col r64 bufCol s64
+            end
+
+            dup
+            buf bufIdx r32 +
+            s8
+            bufIdx inc32
+        end
+
+        drop
+
+        10 = if
+            line inc64
+            1 col s64
+        else
+            col inc64
+        end
+
+        index inc64
+    end
+
+    bufIdx r32 0 > if
+        buf filepath r64 line r64 bufCol r64 CreateAndPushOp
+    end
 
     fd r64 close drop
     contentLength r64 content r64 munmap
@@ -75,9 +207,9 @@ fun main
         1 exit
     end
 
-    1 ReadArg OpenFile
-    
+    1 ReadArg ParseFile
 end
 
-
 main
+
+PrintOps

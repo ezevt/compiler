@@ -2,7 +2,7 @@ include "std/std.nex"
 
 alloc buf 32 end
 
-"What is yout name?\n" print
+"What is your name?\n" print
 "> " print
 32 buf input
 "Hello " print buf print "!\n" print

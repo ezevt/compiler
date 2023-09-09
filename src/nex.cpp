@@ -21,6 +21,7 @@ enum class Intrinsic {
     plus,
     minus,
     mul,
+    divmod,
     dump,
     EQ,
     GT,
@@ -29,6 +30,8 @@ enum class Intrinsic {
     LE,
     NE,
     AND,
+    OR,
+    NOT,
     dup,
     over,
     swap,
@@ -235,6 +238,13 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rbx\n";
                 out << "    mul rbx\n";
                 out << "    push rax\n";
+            } else if (intrinsic == Intrinsic::divmod) {
+                out << "    xor rdx, rdx\n";
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    div rbx\n";
+                out << "    push rax\n";
+                out << "    push rdx\n";
             } else if (intrinsic == Intrinsic::dump) {
                 out << "    pop rdi\n";
                 out << "    call dump\n";
@@ -306,6 +316,15 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rbx\n";
                 out << "    pop rax\n";
                 out << "    and rbx, rax\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::OR) {
+                out << "    pop rbx\n";
+                out << "    pop rax\n";
+                out << "    or rbx, rax\n";
+                out << "    push rbx\n";
+            } else if (intrinsic == Intrinsic::NOT) {
+                out << "    pop rbx\n";
+                out << "    not rbx\n";
                 out << "    push rbx\n";
             } else if (intrinsic == Intrinsic::dup) {
                 out << "    pop rax\n";
@@ -454,6 +473,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "+", Intrinsic::plus },
     { "-", Intrinsic::minus },
     { "*", Intrinsic::mul },
+    { "divmod", Intrinsic::divmod },
     { "dump", Intrinsic::dump },
     { "=", Intrinsic::EQ },
     { ">", Intrinsic::GT },
@@ -467,6 +487,8 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "swap", Intrinsic::swap },
     { "rot", Intrinsic::rot },
     { "and", Intrinsic::AND },
+    { "or", Intrinsic::OR },
+    { "not", Intrinsic::NOT },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
@@ -577,7 +599,7 @@ int EvalConstant(ParseContext& context, std::vector<Token>& rtokens) {
             } else if (context.constants.find(token.string) != context.constants.end()) {
                 stack.push_back(context.constants[token.string]);
             } else {
-                Error(token.loc, "unexpected identifier");
+                Error(token.loc, "unknown word '%s'", token.string);
                 exit(-1);
             }
         }

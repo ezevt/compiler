@@ -331,7 +331,11 @@ const SYS_finit_module 313 end
 
 const AT_FDCWD 0 100 - end
 
-const O_RDONLY 0 end
+fun O_RDONLY 0 end
+fun O_WRONLY 1 end
+fun O_RDWR   2 end
+fun O_CREAT 64 end
+fun O_TRUNC 512 end
 
 const CLOCK_MONOTONIC 1 end
 const TIMER_ABSTIME 1 end
@@ -428,6 +432,33 @@ fun print // ptr
     stdout fprint
 end
 
+const FPRINTD_BUF_CAP 32 end
+fun fprintd // int fd
+    alloc buf FPRINTD_BUF_CAP end
+    alloc fd u64 end
+    fd s64
+    0 buf FPRINTD_BUF_CAP + 1 - s8
+
+    dup 0 = if
+        "0" fd r64 fprint
+    else
+        buf FPRINTD_BUF_CAP + 1 -    
+        while over 0 > do
+            1 - dup rot
+            10 divmod
+            rot swap 48 + swap s8 swap
+        end
+
+        dup
+        buf FPRINTD_BUF_CAP 1 - + swap - drop fd r64 fprint
+    end
+    drop
+end
+
+fun printd // int
+    stdout fprintd
+end
+
 fun eprint // ptr
     stderr fprint
 end
@@ -438,4 +469,36 @@ fun input // int ptr
     +
     1 -
     0 swap s8
+end
+
+fun IsDigit // u8: char
+    dup 48 >=
+    swap 57 <=
+    and
+end
+
+fun IsSpace
+    dup   9 =
+    over 10 =
+    rot  32 =
+    or
+    or
+end
+
+fun ParseInteger // ptr -> int bool
+    0 while
+        over r8
+        dup 0 !=
+        swap IsDigit
+        and
+    do
+        over r8 
+        48 - // form ascii to decimal
+
+        swap 10 * +
+
+        swap 1 + swap
+    end
+
+    swap r8 0 =
 end
