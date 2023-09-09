@@ -1,0 +1,80 @@
+{
+	"name": "Nex",
+	"scopeName": "source.nex",
+	"fileTypes": ["nex"],
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#intrinsics"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.nex",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.nex",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"match": "\\b(if|else|while|do|end|alloc|const|fun|include)\\b",
+					"name": "keyword.nex"
+				}
+			]
+		},
+		"intrinsics": {
+			"patterns": [
+				{
+					"match": "\\b(dup|over|swap|drop|rot|dump|or|not|and|syscall1|syscall2|syscall3|syscall4|syscall5|syscall6|r8|s8|r16|s16|r32|s32|r64|s64)\\b",
+					"name": "support.function.nex"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"match": "[-+*/.=<>!]+",
+					"name": "keyword.operator.nex"
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"match": "\\b[0-9]+\\b",
+					"name": "constant.numeric.nex"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"match": "\"(.*?)\"",
+					"name": "string.quoted.double.nex"
+				}
+			]
+		}
+	}
+}

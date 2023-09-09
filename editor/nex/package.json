@@ -1,0 +1,25 @@
+{
+  "name": "nex",
+  "displayName": "NEX",
+  "description": "NEX Programming Language",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.81.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "nex",
+      "aliases": ["NEX Programming Language", "nex"],
+      "extensions": [".nex",".nx"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "nex",
+      "scopeName": "source.nex",
+      "path": "./syntaxes/nex.tmLanguage.json"
+    }]
+  }
+}
