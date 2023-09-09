@@ -8,6 +8,8 @@
 #include <stdarg.h>
 #include <string.h>
 #include <iomanip>
+#include <tuple>
+#include <assert.h>
 
 const int RETURN_STACK_CAP_X86_64 = 4096;
 
@@ -271,22 +273,6 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rax\n";
                 out << "    cmp rax, rbx\n";
                 out << "    cmovl rcx, rdx\n";
-                out << "    push rcx\n";
-            } else if (intrinsic == Intrinsic::GE) {
-                out << "    mov rcx, 0\n";
-                out << "    mov rdx, 1\n";
-                out << "    pop rbx\n";
-                out << "    pop rax\n";
-                out << "    cmp rax, rbx\n";
-                out << "    cmovge rcx, rdx\n";
-                out << "    push rcx\n";
-            } else if (intrinsic == Intrinsic::GE) {
-                out << "    mov rcx, 0\n";
-                out << "    mov rdx, 1\n";
-                out << "    pop rbx\n";
-                out << "    pop rax\n";
-                out << "    cmp rax, rbx\n";
-                out << "    cmovge rcx, rdx\n";
                 out << "    push rcx\n";
             } else if (intrinsic == Intrinsic::GE) {
                 out << "    mov rcx, 0\n";
@@ -863,6 +849,637 @@ Program TokensToProgram(std::vector<Token>& tokens) {
     return program;
 }
 
+void NotEnoughArguments(const Op& op) {
+    if (op.type == OpType::intrinsic) {
+        Error(op.loc, "not enough arguments for intrinsic");
+    } else if (op.type == OpType::IF) {
+        Error(op.loc, "not enough arguments for if-block condition");
+    } else if (op.type == OpType::DO) {
+        Error(op.loc, "not enough arguments for while-do condition");
+    } else {
+        Error(op.loc, "unreachable");
+    }
+}
+
+enum class DataType {
+    INT,
+    PTR,
+    BOOL
+};
+
+typedef std::vector<DataType> DataStack;
+
+void PrintDataStack(const DataStack& b) {
+    for (int i = 0; i < b.size(); i++) {
+        if (b[i] == DataType::INT) {
+            std::cout << "INT, ";
+        } else if (b[i] == DataType::PTR) {
+            std::cout << "PTR, ";
+        } else if (b[i] == DataType::BOOL) {
+            std::cout << "BOOL, ";
+        } else {
+            std::cout << "UNKNOWN, ";
+        }
+
+    }
+    std::cout << std::endl;
+}
+
+bool EqualStacks(const DataStack& a, const DataStack& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < a.size(); i++) {
+        if ((int)a[i] != (int)b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void TypeCheckProgram(const Program& program) {
+    DataStack stack;
+    std::vector<std::tuple<DataStack, OpType>> blockStack;
+
+    for (int i = 0; i < program.ops.size(); i++) {
+        Op op = program.ops[i];
+        if (op.type == OpType::push) {
+            stack.push_back(DataType::INT);
+        } else if (op.type == OpType::push_string) {
+            stack.push_back(DataType::PTR);
+        } else if (op.type == OpType::push_addr) {
+            stack.push_back(DataType::PTR);
+        } else if (op.type == OpType::push_local_addr) {
+            stack.push_back(DataType::PTR);
+        } else if (op.type == OpType::IF) {
+            if (stack.size() < 1) {
+                NotEnoughArguments(op);
+                exit(-1);
+            }
+
+            DataType a = stack.back();
+            stack.pop_back();
+
+            if (a != DataType::BOOL) {
+                Error(op.loc, "invalid argument for if-block condition. Expected BOOL");
+                exit(-1);
+            }
+            blockStack.push_back({ DataStack(stack), op.type });
+        } else if (op.type == OpType::ELSE) {
+            DataStack expectedStack = std::get<0>(blockStack.back());
+            OpType blockType = std::get<1>(blockStack.back());
+            blockStack.pop_back();
+
+            blockStack.push_back({ DataStack(stack), op.type });
+            stack = expectedStack;
+        } else if (op.type == OpType::WHILE) {
+            blockStack.push_back({ DataStack(stack), op.type });
+        } else if (op.type == OpType::DO) {
+            if (stack.size() < 1) {
+                NotEnoughArguments(op);
+                exit(-1);
+            }
+
+            DataType a = stack.back();
+            stack.pop_back();
+
+            if (a != DataType::BOOL) {
+                Error(op.loc, "invalid argument for while-do condition. Expected BOOL");
+                exit(-1);
+            }
+
+            DataStack expectedStack = std::get<0>(blockStack.back());
+            OpType blockType = std::get<1>(blockStack.back());
+            blockStack.pop_back();
+
+            if (!EqualStacks(stack, expectedStack)) {
+                Error(op.loc, "while-do condition cannot alter the types of the arguments in the stack");
+                exit(-1);
+            }
+
+            blockStack.push_back({ DataStack(stack), op.type });
+        } else if (op.type == OpType::END) {
+            DataStack expectedStack = std::get<0>(blockStack.back());
+            OpType blockType = std::get<1>(blockStack.back());
+            blockStack.pop_back();
+
+            if (blockType == OpType::IF) {
+                if (!EqualStacks(stack, expectedStack)) {
+                    Error(op.loc, "else-less if cannot alter the types of the arguments in the stack");
+                    exit(-1);
+                }
+            } else if (blockType == OpType::ELSE) {
+                if (!EqualStacks(stack, expectedStack)) {
+                    Error(op.loc, "both branches of the if-block must result in the same types of the arguments in the stack");
+                    exit(-1);
+                }
+            } else if (blockType == OpType::DO) {
+                if (!EqualStacks(stack, expectedStack)) {
+                    Error(op.loc, "while-do cannot alter the types of the arguments in the stack");
+                    exit(-1);
+                }
+            }
+        } else if (op.type == OpType::skip_fun) {
+            assert(false);
+        } else if (op.type == OpType::fun) {
+            assert(false);
+        } else if (op.type == OpType::call) {
+            assert(false);
+        } else if (op.type == OpType::ret) {
+            assert(false);
+        } else if (op.type == OpType::intrinsic) {
+            Intrinsic intrinsic = (Intrinsic)op.value;
+
+            if (intrinsic == Intrinsic::plus) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::INT && b == DataType::INT) {
+                    stack.push_back(DataType::INT);
+                } else if (a == DataType::INT && b == DataType::PTR) {
+                    stack.push_back(DataType::PTR);
+                } else if (a == DataType::PTR && b == DataType::INT) {
+                    stack.push_back(DataType::PTR);
+                } else {
+                    Error(op.loc, "invalid arguments for '+' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::minus) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && (a == DataType::INT || a == DataType::PTR)) {
+                    stack.push_back(DataType::INT);
+                } else if (b == DataType::PTR && a == DataType::INT) {
+                    stack.push_back(DataType::PTR);
+                } else {
+                    Error(op.loc, "invalid arguments for '-' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::mul) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::INT);
+                } else {
+                    Error(op.loc, "invalid arguments for '*' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::divmod) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::INT);
+                    stack.push_back(DataType::INT);
+                } else {
+                    Error(op.loc, "invalid arguments for 'divmod' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::dump) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::EQ) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '=' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::GT) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '>' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::LT) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '<' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::GE) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '>=' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::LE) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '<=' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::NE) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && a == DataType::INT) {
+                    stack.push_back(DataType::BOOL);
+                } else {
+                    Error(op.loc, "invalid arguments for '!=' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::AND) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && (a == DataType::BOOL || a == DataType::INT)) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'and' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::OR) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a == b && (a == DataType::BOOL || a == DataType::INT)) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'or' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::NOT) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::BOOL || a == DataType::INT) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'not' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::dup) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                stack.push_back(a);
+                stack.push_back(a);
+            } else if (intrinsic == Intrinsic::over) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                stack.push_back(b);
+                stack.push_back(a);
+                stack.push_back(b);
+            } else if (intrinsic == Intrinsic::swap) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                stack.push_back(a);
+                stack.push_back(b);
+            } else if (intrinsic == Intrinsic::drop) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::rot) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+                DataType c = stack.back();
+                stack.pop_back();
+                
+                stack.push_back(b);
+                stack.push_back(a);
+                stack.push_back(c);
+            } else if (intrinsic == Intrinsic::syscall1) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::syscall2) {
+                if (stack.size() < 3) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::syscall3) {
+                if (stack.size() < 4) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::syscall4) {
+                if (stack.size() < 5) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::syscall5) {
+                if (stack.size() < 6) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::syscall6) {
+                if (stack.size() < 7) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+                stack.pop_back();
+            } else if (intrinsic == Intrinsic::read8) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::PTR) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'r8' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::store8) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a != DataType::PTR) {
+                    Error(op.loc, "invalid arguments for 's8' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::read16) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::PTR) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'r16' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::store16) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a != DataType::PTR) {
+                    Error(op.loc, "invalid arguments for 's16' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::read32) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::PTR) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'r32' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::store32) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a != DataType::PTR) {
+                    Error(op.loc, "invalid arguments for 's32' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::read64) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                if (a == DataType::PTR) {
+                    stack.push_back(a);
+                } else {
+                    Error(op.loc, "invalid arguments for 'r64' intrinsic");
+                    exit(-1);
+                }
+            } else if (intrinsic == Intrinsic::store64) {
+                if (stack.size() < 2) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+                DataType b = stack.back();
+                stack.pop_back();
+
+                if (a != DataType::PTR) {
+                    Error(op.loc, "invalid arguments for 's64' intrinsic");
+                    exit(-1);
+                }
+            } else {
+                Error(op.loc, "unreachable");
+            }
+        }
+    }
+
+    if (stack.size() != 0) {
+        std::cerr << "ERROR: unhandled data on the stack" << std::endl;
+        exit(-1);
+    }
+}
+
 bool IsInteger(const std::string& s)
 {
     std::string::const_iterator it = s.begin();
@@ -989,6 +1606,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<Token> tokens = Tokenize(argv[1]);
     Program program = TokensToProgram(tokens);
+    TypeCheckProgram(program);
     std::string asmCode = Generate_linux_x86_64(program);
 
     {
