@@ -4,11 +4,11 @@ const OpType.push 0 end
 const OpType.intrinsic 1 end
 
 const Op 40 end // u64 u64 ptr u32 u32
-fun Op.type      0 + end // u64
-fun Op.data      8 + end // u64
-fun Op.filepath 16 + end // ptr
-fun Op.line     24 + end // u64
-fun Op.col      32 + end // u64
+fun Op.type ptr -- ptr -> 0 + end // u64
+fun Op.data ptr -- ptr -> 8 + end // u64
+fun Op.filepath ptr -- ptr -> 16 + end // ptr
+fun Op.line ptr -- ptr -> 24 + end // u64
+fun Op.col ptr -- ptr -> 32 + end // u64
 
 const Intrinsic.plus 0 end
 const Intrinsic.dump 1 end
@@ -18,7 +18,7 @@ alloc OpBuf Op OP_CAP * end
 alloc OpIdx u64 end
 0 OpIdx s64
 
-fun PushOp // type data file line col
+fun PushOp int int ptr int int ->
     OpIdx r64 Op * OpBuf +
     dup Op.col      rot swap s64
     dup Op.line     rot swap s64
@@ -29,12 +29,12 @@ fun PushOp // type data file line col
     OpIdx inc64
 end
 
-fun PrintOps
+fun PrintOps ->
     0 while dup OpIdx r64 < do
         dup Op * OpBuf +
         over printd
         "->" print
-        dup Op.filepath r64 print
+        dup Op.filepath r64 cast_ptr print
         ":" print
         dup Op.line r64 printd
         ":" print
@@ -50,7 +50,7 @@ fun PrintOps
     end drop
 end
 
-fun CreateAndPushOp // str filepath line col
+fun CreateAndPushOp ptr ptr int int ->
     alloc file u64 end
     alloc line u64 end
     alloc col  u64 end
@@ -59,21 +59,21 @@ fun CreateAndPushOp // str filepath line col
     file s64
 
     dup "+" streq if
-        OpType.intrinsic Intrinsic.plus file r64 line r64 col r64 PushOp
+        OpType.intrinsic Intrinsic.plus file r64 cast_ptr line r64 col r64 PushOp
     else dup "dump" streq if
-        OpType.intrinsic Intrinsic.dump file r64 line r64 col r64 PushOp
+        OpType.intrinsic Intrinsic.dump file r64 cast_ptr line r64 col r64 PushOp
     else dup ParseInteger if
-        OpType.push swap file r64 line r64 col r64 PushOp
+        OpType.push swap file r64 cast_ptr line r64 col r64 PushOp
     else
         drop
 
-        file r64 print
+        file r64 cast_ptr print
         ":" print
         line r64 printd
         ":" print
         col r64 printd
         ": ERROR: unknown word '" print
-        dup
+        dup print
         "'\n" print
 
         1 exit
@@ -82,36 +82,22 @@ fun CreateAndPushOp // str filepath line col
     drop
 end
 
-// command line arguments are stored in the stack before the program runs
-alloc argc u32 end
-alloc argv 128 end // max of 16 arguments
-fun StoreArgs
-    argc s32
-
-    0 while dup argc r32 < do
-        swap over 8 *
-        argv +
-        s64
-        1 +
-    end drop
+fun ReadArg int -- ptr ->
+    8 * argv + r64 cast_ptr
 end
 
-fun ReadArg // int: idx
-    8 * argv + r64
-end
-
-fun ParseFile // ptr: filepath
+fun ParseFile ptr ->
     alloc filepath string end
     filepath s64
 
     0
     O_RDONLY
-    filepath r64
+    filepath r64 cast_ptr
     AT_FDCWD
     openat 
 
     dup 0 < if
-        "could not open file '" eprint filepath r64 eprint "'\n" eprint
+        "could not open file '" eprint filepath r64 cast_ptr eprint "'\n" eprint
         1 exit
     end
 
@@ -119,7 +105,7 @@ fun ParseFile // ptr: filepath
     fd s64
     alloc statbuf stat end
     statbuf fd r64 fstat 0 < if
-        "could not determine size of file '" eprint filepath r64 eprint "'\n" eprint
+        "could not determine size of file '" eprint filepath r64 cast_ptr eprint "'\n" eprint
         1 exit
     end
 
@@ -133,12 +119,12 @@ fun ParseFile // ptr: filepath
     MAP_PRIVATE              // flags
     PROT_READ                // prot
     contentLength r64        // length
-    NULL                     // addr
+    NULL cast_ptr            // addr
     mmap
     content s64
 
     content r64 0 < if
-        "ERROR: could not map file " eprint filepath r64 eprint "'\n" eprint
+        "ERROR: could not map file " eprint filepath r64 cast_ptr eprint "'\n" eprint
         1 exit
     end
 
@@ -154,16 +140,16 @@ fun ParseFile // ptr: filepath
     1 col s64
     1 bufCol s64
     0 index s64
-    while content r64 index r64 + r8 0 != do
+    while content r64 cast_ptr index r64 + r8 0 != do
         
-        content r64 index r64 + r8
+        content r64 cast_ptr index r64 + r8
         dup IsSpace if
             bufIdx r32 0 > if
                 0
                 buf bufIdx r32 +
                 s8 // make it null-terminated
                 
-                buf filepath r64 line r64 bufCol r64 CreateAndPushOp
+                buf filepath r64 cast_ptr line r64 bufCol r64 CreateAndPushOp
                 
                 0 bufIdx s32
             end
@@ -178,8 +164,6 @@ fun ParseFile // ptr: filepath
             bufIdx inc32
         end
 
-        drop
-
         10 = if
             line inc64
             1 col s64
@@ -191,18 +175,17 @@ fun ParseFile // ptr: filepath
     end
 
     bufIdx r32 0 > if
-        buf filepath r64 line r64 bufCol r64 CreateAndPushOp
+        buf filepath r64 cast_ptr line r64 bufCol r64 CreateAndPushOp
     end
 
     fd r64 close drop
-    contentLength r64 content r64 munmap
+    contentLength r64 content r64 cast_ptr munmap drop
 end
 
 
-fun main
-    StoreArgs
+fun main ->
 
-    argc r32 2 < if
+    argc 2 < if
         "not enough arguments, expected filepath\n" eprint
         1 exit
     end

@@ -331,11 +331,11 @@ const SYS_finit_module 313 end
 
 const AT_FDCWD 0 100 - end
 
-fun O_RDONLY 0 end
-fun O_WRONLY 1 end
-fun O_RDWR   2 end
-fun O_CREAT 64 end
-fun O_TRUNC 512 end
+const O_RDONLY 0 end
+const O_WRONLY 1 end
+const O_RDWR   2 end
+const O_CREAT 64 end
+const O_TRUNC 512 end
 
 const CLOCK_MONOTONIC 1 end
 const TIMER_ABSTIME 1 end
@@ -343,50 +343,50 @@ const TIMER_ABSTIME 1 end
 const MAP_PRIVATE 2 end
 const PROT_READ 1 end
 
-fun write SYS_write syscall3 end
-fun read SYS_read syscall3 end
-fun openat SYS_openat syscall3 end
-fun fstat SYS_fstat syscall2 end
-fun close SYS_close syscall1 end
-fun exit SYS_exit syscall1 drop end
-fun mmap SYS_mmap syscall6 end
-fun munmap SYS_munmap syscall2 end
-fun clock_nanosleep SYS_clock_nanosleep syscall4 end
+fun write int ptr int -- int -> SYS_write syscall3 end
+fun read int ptr int -- int -> SYS_read syscall3 end
+fun openat int int ptr int -- int -> SYS_openat syscall4 end
+fun fstat ptr int -- int -> SYS_fstat syscall2 end
+fun close int -- int -> SYS_close syscall1 end
+fun exit int -> SYS_exit syscall1 drop end
+fun mmap int int int int int ptr -- int -> SYS_mmap syscall6 end
+fun munmap int ptr -- int -> SYS_munmap syscall2 end
+fun clock_nanosleep ptr ptr int int -- int -> SYS_clock_nanosleep syscall4 end
 
 const timespec 16 end
 
 const stat 144 end
-fun stat.st_dev 0 + end // 64
-fun stat.st_ino 8 + end // u64
-fun stat.st_mode 24 + end // u32
-fun stat.st_nlink 16 + end // u64
-fun stat.st_uid 28 + end // u32
-fun stat.st_gid 32 + end // u32
-fun stat.st_rdev 40 + end // u64
-fun stat.st_size 48 + end // u64
-fun stat.st_blksize 56 + end // u64
-fun stat.st_blocks 64 + end // u64
-fun stat.st_atim 72 + end // timespec
-fun stat.st_mtim 88 + end // timespec
-fun stat.st_ctim 104 + end // timespec
+fun stat.st_dev ptr -- ptr -> 0 + end // 64
+fun stat.st_ino  ptr -- ptr -> 8 + end // u64
+fun stat.st_mode ptr -- ptr -> 24 + end // u32
+fun stat.st_nlink ptr -- ptr -> 16 + end // u64
+fun stat.st_uid ptr -- ptr -> 28 + end // u32
+fun stat.st_gid ptr -- ptr -> 32 + end // u32
+fun stat.st_rdev ptr -- ptr -> 40 + end // u64
+fun stat.st_size ptr -- ptr -> 48 + end // u64
+fun stat.st_blksize ptr -- ptr -> 56 + end // u64
+fun stat.st_blocks ptr -- ptr -> 64 + end // u64
+fun stat.st_atim ptr -- ptr -> 72 + end // timespec
+fun stat.st_mtim ptr -- ptr -> 88 + end // timespec
+fun stat.st_ctim ptr -- ptr -> 104 + end // timespec
 
-fun inc64
+fun inc64 ptr ->
     dup r64 1 + swap s64
 end
 
-fun dec64
+fun dec64 ptr ->
     dup r64 1 - swap s64
 end
 
-fun inc32
+fun inc32 ptr ->
     dup r32 1 + swap s32
 end
 
-fun dec32
+fun dec32 ptr ->
     dup r32 1 - swap s32
 end
 
-fun strlen
+fun strlen ptr -- int ->
     0 swap
     
     while dup r8 0 != do
@@ -398,7 +398,7 @@ fun strlen
     // return counter
 end
 
-fun streq // ptr ptr
+fun streq ptr ptr -- bool ->
     while
         over over
         r8 0 !=
@@ -409,7 +409,7 @@ fun streq // ptr ptr
             r8 swap r8
             =
         else
-            0
+            0 cast_bool
         end
     do
         swap 1 +
@@ -422,18 +422,18 @@ fun streq // ptr ptr
     and    
 end
 
-fun fprint // ptr int
+fun fprint ptr int ->
     over strlen
     rot rot
     write drop
 end
 
-fun print // ptr
+fun print ptr ->
     stdout fprint
 end
 
 const FPRINTD_BUF_CAP 32 end
-fun fprintd // int fd
+fun fprintd int int ->
     alloc buf FPRINTD_BUF_CAP end
     alloc fd u64 end
     fd s64
@@ -455,15 +455,15 @@ fun fprintd // int fd
     drop
 end
 
-fun printd // int
+fun printd int ->
     stdout fprintd
 end
 
-fun eprint // ptr
+fun eprint ptr ->
     stderr fprint
 end
 
-fun input // int ptr
+fun input int ptr ->
     swap over stdin read
     
     +
@@ -471,13 +471,13 @@ fun input // int ptr
     0 swap s8
 end
 
-fun IsDigit // u8: char
+fun IsDigit int -- bool ->
     dup 48 >=
     swap 57 <=
     and
 end
 
-fun IsSpace
+fun IsSpace int -- bool ->
     dup   9 =
     over 10 =
     rot  32 =
@@ -485,7 +485,7 @@ fun IsSpace
     or
 end
 
-fun ParseInteger // ptr -> int bool
+fun ParseInteger ptr -- int bool ->
     0 while
         over r8
         dup 0 !=

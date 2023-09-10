@@ -53,6 +53,11 @@ enum class Intrinsic {
     store32,
     read64,
     store64,
+    cast_int,
+    cast_bool,
+    cast_ptr,
+    argc,
+    argv
 };
 
 enum class Keyword {
@@ -65,6 +70,8 @@ enum class Keyword {
     ALLOC,
     FUN,
     INCLUDE,
+    ARROW,
+    BIKESHEDDER
 };
 
 enum class OpType {
@@ -112,9 +119,21 @@ struct Token {
     Token(TokenType _type, Loc _loc, Keyword _keyword) : type(_type), loc(_loc), keyword(_keyword) {}
 };
 
+enum class DataType {
+    INT,
+    PTR,
+    BOOL
+};
+
+struct Contract {
+    std::vector<DataType> ins;
+    std::vector<DataType> outs;
+};
+
 struct Program {
     std::vector<Op> ops;
     std::vector<const char*> strings;
+    std::unordered_map<int, Contract> contracts;
     int memory = 0;
 };
 
@@ -172,9 +191,9 @@ std::string Generate_linux_x86_64(Program& program) {
     out << "    ret\n";
     out << "global _start\n";
     out << "_start:\n";
+    out << "    mov [args_ptr], rsp\n";
     out << "    mov rax, ret_stack_end\n";
     out << "    mov [ret_stack_rsp], rax\n";
-
     for (int i = 0; i < program.ops.size(); i++) {
         Op op = program.ops[i];
         out << "addr_" << i << ":\n";
@@ -417,6 +436,20 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    pop rax\n";
                 out << "    pop rbx\n";
                 out << "    mov [rax], rbx\n";
+            } else if (intrinsic == Intrinsic::cast_int) {
+                // used for type checking
+            } else if (intrinsic == Intrinsic::cast_bool) {
+                // used for type checking
+            } else if (intrinsic == Intrinsic::cast_ptr) {
+                // used for type checking
+            } else if (intrinsic == Intrinsic::argc) {
+                out << "    mov rax, [args_ptr]\n";
+                out << "    mov rax, [rax]\n";
+                out << "    push rax\n";
+            } else if (intrinsic == Intrinsic::argv) {
+                out << "    mov rax, [args_ptr]\n";
+                out << "    add rax, 8\n";
+                out << "    push rax\n";
             }
         }
     }
@@ -447,6 +480,7 @@ std::string Generate_linux_x86_64(Program& program) {
         out << oss.str();
     }
     out << "segment .bss\n";
+    out << "    args_ptr: resq 1\n";
     out << "    ret_stack_rsp: resq 1\n";
     out << "    ret_stack: resb " << RETURN_STACK_CAP_X86_64 << "\n";
     out << "    ret_stack_end: resq 1\n";
@@ -489,6 +523,11 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "s32", Intrinsic::store32 },
     { "r64", Intrinsic::read64 },
     { "s64", Intrinsic::store64 },
+    { "cast_int", Intrinsic::cast_int },
+    { "cast_bool", Intrinsic::cast_bool },
+    { "cast_ptr", Intrinsic::cast_ptr },
+    { "argc", Intrinsic::argc },
+    { "argv", Intrinsic::argv },
 };
 
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
@@ -501,6 +540,14 @@ std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "alloc", Keyword::ALLOC },
     { "fun", Keyword::FUN },
     { "include", Keyword::INCLUDE },
+    { "->", Keyword::ARROW },
+    { "--", Keyword::BIKESHEDDER },
+};
+
+std::unordered_map<std::string, DataType> DataTypeDictionary = {
+    { "int", DataType::INT },
+    { "ptr", DataType::PTR },
+    { "bool", DataType::BOOL },
 };
 
 struct Function {
@@ -626,6 +673,53 @@ void CheckNameRedefinition(const ParseContext& context, const std::string& name,
             exit(-1);
         }
     }
+}
+
+std::tuple<std::vector<DataType>, Keyword> ParseContractList(std::vector<Token>& rtokens, std::vector<Keyword> stop) {
+    std::vector<DataType> args;
+
+    Token token;
+    while (rtokens.size() > 0) {
+        token = rtokens.back();
+        rtokens.pop_back();
+
+        if (token.type == TokenType::word) {
+            if (DataTypeDictionary.find(token.string) != DataTypeDictionary.end()) {
+                args.push_back(DataTypeDictionary[token.string]);
+            } else {
+                Error(token.loc, "unknown data type '%s'", token.string);
+                exit(-1);
+            }
+        } else if (token.type == TokenType::keyword) {
+            for (auto s : stop) {
+                if (token.keyword == s) {
+                    return { args, s };
+                }
+            }
+            Error(token.loc, "unexpected keyword in function definition");
+            exit(-1);
+        } else {
+            Error(token.loc, "unexpected token in function definition");
+            exit(-1);
+        }
+    }
+
+    Error(token.loc, "unexpected end of file");
+    exit(-1);
+}
+
+Contract ParseContract(std::vector<Token>& rtokens) {
+    Contract contract;
+
+    auto in = ParseContractList(rtokens, { Keyword::BIKESHEDDER, Keyword::ARROW });
+    contract.ins = std::get<0>(in);
+
+    if (std::get<1>(in) == Keyword::ARROW) return contract;
+
+
+    auto out = ParseContractList(rtokens, { Keyword::ARROW });
+    contract.outs = std::get<0>(out);
+    return contract;
 }
 
 std::vector<Token> Tokenize(const std::string& filepath);
@@ -822,7 +916,11 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                 CheckNameRedefinition(context, funName, funLoc);
 
+                Contract contract = ParseContract(rtokens);
+
                 context.functions.insert({ funName, { funAddr+1 } });
+                program.contracts[funAddr+1] = contract;
+
                 context.currentFunction = &context.functions[funName];
             } else if (token.keyword == Keyword::INCLUDE) {
                 Token pathTok = rtokens.back();
@@ -861,12 +959,6 @@ void NotEnoughArguments(const Op& op) {
     }
 }
 
-enum class DataType {
-    INT,
-    PTR,
-    BOOL
-};
-
 typedef std::vector<DataType> DataStack;
 
 void PrintDataStack(const DataStack& b) {
@@ -898,9 +990,34 @@ bool EqualStacks(const DataStack& a, const DataStack& b) {
     return true;
 }
 
-void TypeCheckProgram(const Program& program) {
+void TypeCheckContract(Op op, DataStack& stack, const Contract& contract) {
+    std::vector<DataType> ins(contract.ins);
+
+    while (stack.size() > 0 && ins.size() > 0) {
+        DataType actual = stack.back();
+        stack.pop_back();
+        DataType expected = ins.back();
+        ins.pop_back();
+
+        if (actual != expected) {
+            Error(op.loc, "unexpected data type");
+            exit(-1);
+        }
+    }
+
+    if (stack.size() < ins.size()) {
+        Error(op.loc, "not enough arguments provided");
+    }
+
+    for (DataType type : contract.outs) {
+        stack.push_back(type);
+    }
+}
+
+void TypeCheckProgram(Program& program) {
     DataStack stack;
     std::vector<std::tuple<DataStack, OpType>> blockStack;
+    DataStack functionReturn;
 
     for (int i = 0; i < program.ops.size(); i++) {
         Op op = program.ops[i];
@@ -981,13 +1098,25 @@ void TypeCheckProgram(const Program& program) {
                 }
             }
         } else if (op.type == OpType::skip_fun) {
-            assert(false);
+
         } else if (op.type == OpType::fun) {
-            assert(false);
+            blockStack.push_back({ DataStack(stack), op.type });
+
+            stack = program.contracts[i].ins;
+            functionReturn = program.contracts[i].outs;
         } else if (op.type == OpType::call) {
-            assert(false);
+            TypeCheckContract(op, stack, program.contracts[op.value]);
         } else if (op.type == OpType::ret) {
-            assert(false);
+            DataStack prevStack = std::get<0>(blockStack.back());
+            OpType blockType = std::get<1>(blockStack.back());
+            blockStack.pop_back();
+
+            if (!EqualStacks(stack, functionReturn)) {
+                Error(op.loc, "unexpected data in the stack");
+                exit(-1);
+            }
+
+            stack = prevStack;
         } else if (op.type == OpType::intrinsic) {
             Intrinsic intrinsic = (Intrinsic)op.value;
 
@@ -1293,6 +1422,8 @@ void TypeCheckProgram(const Program& program) {
 
                 stack.pop_back();
                 stack.pop_back();
+
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall2) {
                 if (stack.size() < 3) {
                     NotEnoughArguments(op);
@@ -1302,6 +1433,8 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
                 stack.pop_back();
                 stack.pop_back();
+
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall3) {
                 if (stack.size() < 4) {
                     NotEnoughArguments(op);
@@ -1312,6 +1445,8 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
                 stack.pop_back();
                 stack.pop_back();
+                
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall4) {
                 if (stack.size() < 5) {
                     NotEnoughArguments(op);
@@ -1323,6 +1458,8 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
                 stack.pop_back();
                 stack.pop_back();
+                
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall5) {
                 if (stack.size() < 6) {
                     NotEnoughArguments(op);
@@ -1335,6 +1472,8 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
                 stack.pop_back();
                 stack.pop_back();
+                
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall6) {
                 if (stack.size() < 7) {
                     NotEnoughArguments(op);
@@ -1348,6 +1487,8 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
                 stack.pop_back();
                 stack.pop_back();
+                
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::read8) {
                 if (stack.size() < 1) {
                     NotEnoughArguments(op);
@@ -1358,7 +1499,7 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
 
                 if (a == DataType::PTR) {
-                    stack.push_back(a);
+                    stack.push_back(DataType::INT);
                 } else {
                     Error(op.loc, "invalid arguments for 'r8' intrinsic");
                     exit(-1);
@@ -1388,7 +1529,7 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
 
                 if (a == DataType::PTR) {
-                    stack.push_back(a);
+                    stack.push_back(DataType::INT);
                 } else {
                     Error(op.loc, "invalid arguments for 'r16' intrinsic");
                     exit(-1);
@@ -1418,7 +1559,7 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
 
                 if (a == DataType::PTR) {
-                    stack.push_back(a);
+                    stack.push_back(DataType::INT);
                 } else {
                     Error(op.loc, "invalid arguments for 'r32' intrinsic");
                     exit(-1);
@@ -1448,7 +1589,7 @@ void TypeCheckProgram(const Program& program) {
                 stack.pop_back();
 
                 if (a == DataType::PTR) {
-                    stack.push_back(a);
+                    stack.push_back(DataType::INT);
                 } else {
                     Error(op.loc, "invalid arguments for 'r64' intrinsic");
                     exit(-1);
@@ -1468,8 +1609,43 @@ void TypeCheckProgram(const Program& program) {
                     Error(op.loc, "invalid arguments for 's64' intrinsic");
                     exit(-1);
                 }
+            } else if (intrinsic == Intrinsic::cast_int) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                stack.push_back(DataType::INT);
+            } else if (intrinsic == Intrinsic::cast_bool) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                stack.push_back(DataType::BOOL);
+            } else if (intrinsic == Intrinsic::cast_ptr) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+                
+                DataType a = stack.back();
+                stack.pop_back();
+
+                stack.push_back(DataType::PTR);
+            } else if (intrinsic == Intrinsic::argc) {
+                stack.push_back(DataType::INT);
+            } else if (intrinsic == Intrinsic::argv) {
+                stack.push_back(DataType::PTR);
             } else {
                 Error(op.loc, "unreachable");
+                exit(-1);
             }
         }
     }
