@@ -39,6 +39,7 @@ enum class Intrinsic {
     swap,
     drop,
     rot,
+    syscall0,
     syscall1,
     syscall2,
     syscall3,
@@ -355,6 +356,10 @@ std::string Generate_linux_x86_64(Program& program) {
                 out << "    push rbx\n";
                 out << "    push rax\n";
                 out << "    push rcx\n";
+            } else if (intrinsic == Intrinsic::syscall0) {
+                out << "    pop rax\n";
+                out << "    syscall\n";
+                out << "    push rax\n";
             } else if (intrinsic == Intrinsic::syscall1) {
                 out << "    pop rax\n";
                 out << "    pop rdi\n";
@@ -509,6 +514,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
     { "and", Intrinsic::AND },
     { "or", Intrinsic::OR },
     { "not", Intrinsic::NOT },
+    { "syscall0", Intrinsic::syscall0 },
     { "syscall1", Intrinsic::syscall1 },
     { "syscall2", Intrinsic::syscall2 },
     { "syscall3", Intrinsic::syscall3 },
@@ -843,10 +849,9 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                     context.currentFunction = {};
                 } else {
-                    Error(program.ops[blockip].loc, "'end' can only close 'if', 'else' or 'while-do' blocks");
+                    Error(program.ops[blockip].loc, "'end' can only close 'if', 'else', 'while-do' or 'fun' blocks");
                     exit(-1);
                 }
-                
             } else if (token.keyword == Keyword::CONST) {
                 Token nameTok = rtokens.back();
                 rtokens.pop_back();
@@ -1414,6 +1419,15 @@ void TypeCheckProgram(Program& program) {
                 stack.push_back(b);
                 stack.push_back(a);
                 stack.push_back(c);
+            } else if (intrinsic == Intrinsic::syscall0) {
+                if (stack.size() < 1) {
+                    NotEnoughArguments(op);
+                    exit(-1);
+                }
+
+                stack.pop_back();
+
+                stack.push_back(DataType::INT);
             } else if (intrinsic == Intrinsic::syscall1) {
                 if (stack.size() < 2) {
                     NotEnoughArguments(op);

@@ -10,8 +10,11 @@ fun Op.filepath ptr -- ptr -> 16 + end // ptr
 fun Op.line ptr -- ptr -> 24 + end // u64
 fun Op.col ptr -- ptr -> 32 + end // u64
 
-const Intrinsic.plus 0 end
-const Intrinsic.dump 1 end
+const Intrinsic.plus   0 end
+const Intrinsic.minus  1 end
+const Intrinsic.mul    2 end
+const Intrinsic.divmod 3 end
+const Intrinsic.dump   4 end
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
@@ -50,6 +53,170 @@ fun PrintOps ->
     end drop
 end
 
+fun CmdEcho ptr ->
+    alloc status u64 end
+    alloc empty pointer end
+    0 empty s64
+
+    "[CMD]" print
+    dup while dup r64 0 != do
+        " " print
+        // TODO escape the logged cmd
+        dup r64 cast_ptr print
+        8 +
+    end drop
+    "\n" print
+
+    fork
+
+    dup 0 = if
+        drop
+        dup r64 cast_ptr empty
+        rot rot
+        execve
+        dup 0 < if
+            "ERROR: could not execute external program\n" eprint
+            1 exit
+        end cast_ptr
+    else 
+        dup 0 > if
+            drop
+            NULL cast_ptr 0 status 0 1 - wait4 drop
+        else
+            drop
+            "ERROR: could not fork a child\n" eprint
+            1 exit
+        end
+    end
+
+    drop
+end
+
+fun GenerateAssembly ->
+    alloc out u64 end
+    
+    420                            // mode
+    O_CREAT O_WRONLY or O_TRUNC or // flags
+    "output.asm"                      // path
+    AT_FDCWD
+    openat
+    out s64
+
+    out r64 0 < if
+        "ERROR: could not open 'output.asm'\n" eprint
+        1 exit
+    end
+
+    "segment .text\n"                           out r64 fprint
+    "dump:\n"                                   out r64 fprint
+    "    mov     r9, -3689348814741910323\n"    out r64 fprint
+    "    sub     rsp, 40\n"                     out r64 fprint
+    "    mov     BYTE [rsp+31], 10\n"           out r64 fprint
+    "    lea     rcx, [rsp+30]\n"               out r64 fprint
+    ".L2:\n"                                    out r64 fprint
+    "    mov     rax, rdi\n"                    out r64 fprint
+    "    lea     r8, [rsp+32]\n"                out r64 fprint
+    "    mul     r9\n"                          out r64 fprint
+    "    mov     rax, rdi\n"                    out r64 fprint
+    "    sub     r8, rcx\n"                     out r64 fprint
+    "    shr     rdx, 3\n"                      out r64 fprint
+    "    lea     rsi, [rdx+rdx*4]\n"            out r64 fprint
+    "    add     rsi, rsi\n"                    out r64 fprint
+    "    sub     rax, rsi\n"                    out r64 fprint
+    "    add     eax, 48\n"                     out r64 fprint
+    "    mov     BYTE [rcx], al\n"              out r64 fprint
+    "    mov     rax, rdi\n"                    out r64 fprint
+    "    mov     rdi, rdx\n"                    out r64 fprint
+    "    mov     rdx, rcx\n"                    out r64 fprint
+    "    sub     rcx, 1\n"                      out r64 fprint
+    "    cmp     rax, 9\n"                      out r64 fprint
+    "    ja      .L2\n"                         out r64 fprint
+    "    lea     rax, [rsp+32]\n"               out r64 fprint
+    "    mov     edi, 1\n"                      out r64 fprint
+    "    sub     rdx, rax\n"                    out r64 fprint
+    "    xor     eax, eax\n"                    out r64 fprint
+    "    lea     rsi, [rsp+32+rdx]\n"           out r64 fprint
+    "    mov     rdx, r8\n"                     out r64 fprint
+    "    mov     rax, 1\n"                      out r64 fprint
+    "    syscall\n"                             out r64 fprint
+    "    add     rsp, 40\n"                     out r64 fprint
+    "    ret\n"                                 out r64 fprint
+    "global _start\n"                           out r64 fprint
+    "_start:\n"                                 out r64 fprint
+    0 while dup OpIdx r64 < do
+        
+        "addr_" out r64 fprint
+        dup out r64 fprintd
+        ":\n" out r64 fprint
+
+        dup Op * OpBuf +
+
+        dup Op.type r64 OpType.push = if
+            "    mov rax, "                 out r64 fprint dup Op.data r64 out r64 fprintd "\n" out r64 fprint
+            "    push rax\n"                out r64 fprint
+        else dup Op.type r64 OpType.intrinsic = if
+            dup Op.data r64 Intrinsic.plus = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    add rax, rbx\n"            out r64 fprint
+                "    push rax\n"                out r64 fprint
+            else dup Op.data r64 Intrinsic.minus = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    sub rbx, rax\n"            out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            else dup Op.data r64 Intrinsic.mul = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    mul rbx\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            else dup Op.data r64 Intrinsic.divmod = if
+                "    xor rdx, rdx\n"            out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    div rbx\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+                "    push rdx\n"                out r64 fprint
+            else dup Op.data r64 Intrinsic.dump = if
+                "    pop rdi\n"                 out r64 fprint
+                "    call dump\n"               out r64 fprint
+            end end end end end
+        end end
+
+        drop
+
+        1 +
+    end drop
+
+    "addr_" out r64 fprint
+    OpIdx r64 out r64 fprintd
+    ":\n" out r64 fprint
+
+    "    mov rax, 60\n" out r64 fprint
+    "    mov rdi, 0\n" out r64 fprint
+    "    syscall\n" out r64 fprint
+
+    alloc nasmArgv pointer 4 * end
+    "/usr/bin/nasm"     nasmArgv 0 pointer * + s64
+    "-felf64"           nasmArgv 1 pointer * + s64
+    "output.asm"        nasmArgv 2 pointer * + s64
+    0                   nasmArgv 3 pointer * + s64
+    nasmArgv CmdEcho
+
+    alloc ldArgv pointer 5 * end
+    "/usr/bin/ld"       ldArgv 0 pointer * + s64
+    "-o"                ldArgv 1 pointer * + s64
+    "output"            ldArgv 2 pointer * + s64
+    "output.o"          ldArgv 3 pointer * + s64
+    NULL                ldArgv 4 pointer * + s64
+    ldArgv CmdEcho
+
+    alloc outputArgv pointer 2 * end
+    "./output"          outputArgv 0 pointer * + s64
+    NULL                outputArgv 1 pointer * + s64
+    outputArgv CmdEcho
+end
+
 fun CreateAndPushOp ptr ptr int int ->
     alloc file u64 end
     alloc line u64 end
@@ -60,6 +227,12 @@ fun CreateAndPushOp ptr ptr int int ->
 
     dup "+" streq if
         OpType.intrinsic Intrinsic.plus file r64 cast_ptr line r64 col r64 PushOp
+    else dup "-" streq if
+        OpType.intrinsic Intrinsic.minus file r64 cast_ptr line r64 col r64 PushOp
+    else dup "*" streq if
+        OpType.intrinsic Intrinsic.mul file r64 cast_ptr line r64 col r64 PushOp
+    else dup "divmod" streq if
+        OpType.intrinsic Intrinsic.divmod file r64 cast_ptr line r64 col r64 PushOp
     else dup "dump" streq if
         OpType.intrinsic Intrinsic.dump file r64 cast_ptr line r64 col r64 PushOp
     else dup ParseInteger if
@@ -77,13 +250,9 @@ fun CreateAndPushOp ptr ptr int int ->
         "'\n" print
 
         1 exit
-    end end end
+    end end end end end end
 
     drop
-end
-
-fun ReadArg int -- ptr ->
-    8 * argv + r64 cast_ptr
 end
 
 fun ParseFile ptr ->
@@ -182,6 +351,9 @@ fun ParseFile ptr ->
     contentLength r64 content r64 cast_ptr munmap drop
 end
 
+fun ReadArg int -- ptr ->
+    8 * argv + r64 cast_ptr
+end
 
 fun main ->
 
@@ -191,8 +363,9 @@ fun main ->
     end
 
     1 ReadArg ParseFile
+    GenerateAssembly
 end
 
 main
 
-PrintOps
+//PrintOps

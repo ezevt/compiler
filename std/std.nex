@@ -352,6 +352,11 @@ fun exit int -> SYS_exit syscall1 drop end
 fun mmap int int int int int ptr -- int -> SYS_mmap syscall6 end
 fun munmap int ptr -- int -> SYS_munmap syscall2 end
 fun clock_nanosleep ptr ptr int int -- int -> SYS_clock_nanosleep syscall4 end
+fun fork -- int -> SYS_fork syscall0 end
+fun getpid -- int -> SYS_getpid syscall0 end
+fun execve ptr ptr ptr -- int -> SYS_execve syscall3 end
+fun wait4 ptr int ptr int -- int -> SYS_wait4 syscall4 end
+
 
 const timespec 16 end
 
