@@ -20,6 +20,9 @@
 		},
 		{
 			"include": "#strings"
+		},
+		{
+			"include": "#types"
 		}
 	],
 	"repository": {
@@ -39,7 +42,7 @@
 		"keywords": {
 			"patterns": [
 				{
-					"match": "\\b(if|else|orelse|while|do|end|alloc|const|fun|include)\\b",
+					"match": "\\b(if|else|while|do|end|alloc|const|fun|include)\\b",
 					"name": "keyword.nex"
 				}
 			]
@@ -73,6 +76,14 @@
 				{
 					"match": "\"(.*?)\"",
 					"name": "string.quoted.double.nex"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"match": "\\b(int|ptr|bool)\\b",
+					"name": "support.type.nex"
 				}
 			]
 		}
