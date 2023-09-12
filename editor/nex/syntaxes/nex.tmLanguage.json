@@ -39,7 +39,7 @@
 		"keywords": {
 			"patterns": [
 				{
-					"match": "\\b(if|else|while|do|end|alloc|const|fun|include)\\b",
+					"match": "\\b(if|else|orelse|while|do|end|alloc|const|fun|include)\\b",
 					"name": "keyword.nex"
 				}
 			]

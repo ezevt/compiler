@@ -154,34 +154,34 @@ fun GenerateAssembly ->
         dup Op.type r64 OpType.push = if
             "    mov rax, "                 out r64 fprint dup Op.data r64 out r64 fprintd "\n" out r64 fprint
             "    push rax\n"                out r64 fprint
-        else dup Op.type r64 OpType.intrinsic = if
+        orelse dup Op.type r64 OpType.intrinsic = if
             dup Op.data r64 Intrinsic.plus = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    add rax, rbx\n"            out r64 fprint
                 "    push rax\n"                out r64 fprint
-            else dup Op.data r64 Intrinsic.minus = if
+            orelse dup Op.data r64 Intrinsic.minus = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    sub rbx, rax\n"            out r64 fprint
                 "    push rbx\n"                out r64 fprint
-            else dup Op.data r64 Intrinsic.mul = if
+            orelse dup Op.data r64 Intrinsic.mul = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    mul rbx\n"                 out r64 fprint
                 "    push rax\n"                out r64 fprint
-            else dup Op.data r64 Intrinsic.divmod = if
+            orelse dup Op.data r64 Intrinsic.divmod = if
                 "    xor rdx, rdx\n"            out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    pop rax\n"                 out r64 fprint
                 "    div rbx\n"                 out r64 fprint
                 "    push rax\n"                out r64 fprint
                 "    push rdx\n"                out r64 fprint
-            else dup Op.data r64 Intrinsic.dump = if
+            orelse dup Op.data r64 Intrinsic.dump = if
                 "    pop rdi\n"                 out r64 fprint
                 "    call dump\n"               out r64 fprint
-            end end end end end
-        end end
+            end
+        end
 
         drop
 
@@ -227,15 +227,15 @@ fun CreateAndPushOp ptr ptr int int ->
 
     dup "+" streq if
         OpType.intrinsic Intrinsic.plus file r64 cast_ptr line r64 col r64 PushOp
-    else dup "-" streq if
+    orelse dup "-" streq if
         OpType.intrinsic Intrinsic.minus file r64 cast_ptr line r64 col r64 PushOp
-    else dup "*" streq if
+    orelse dup "*" streq if
         OpType.intrinsic Intrinsic.mul file r64 cast_ptr line r64 col r64 PushOp
-    else dup "divmod" streq if
+    orelse dup "divmod" streq if
         OpType.intrinsic Intrinsic.divmod file r64 cast_ptr line r64 col r64 PushOp
-    else dup "dump" streq if
+    orelse dup "dump" streq if
         OpType.intrinsic Intrinsic.dump file r64 cast_ptr line r64 col r64 PushOp
-    else dup ParseInteger if
+    orelse dup ParseInteger if
         OpType.push swap file r64 cast_ptr line r64 col r64 PushOp
     else
         drop
@@ -250,7 +250,7 @@ fun CreateAndPushOp ptr ptr int int ->
         "'\n" print
 
         1 exit
-    end end end end end end
+    end
 
     drop
 end

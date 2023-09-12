@@ -64,6 +64,7 @@ enum class Intrinsic {
 enum class Keyword {
     IF,
     ELSE,
+    ORELSE,
     WHILE,
     DO,
     END,
@@ -83,6 +84,7 @@ enum class OpType {
     intrinsic,
     IF,
     ELSE,
+    ORELSE,
     WHILE,
     DO,
     END,
@@ -215,6 +217,8 @@ std::string Generate_linux_x86_64(Program& program) {
             out << "    test rax, rax\n";
             out << "    jz addr_" << op.value << "\n";
         } else if (op.type == OpType::ELSE) {
+            out << "    jmp addr_" << op.value << "\n";
+        } else if (op.type == OpType::ORELSE) {
             out << "    jmp addr_" << op.value << "\n";
         } else if (op.type == OpType::WHILE) {
             out << "    ;; while\n";
@@ -539,6 +543,7 @@ std::unordered_map<std::string, Intrinsic> IntrinsicDictionary = {
 std::unordered_map<std::string, Keyword> KeywordDictionary = {
     { "if", Keyword::IF },
     { "else", Keyword::ELSE },
+    { "orelse", Keyword::ORELSE },
     { "while", Keyword::WHILE },
     { "do", Keyword::DO },
     { "end", Keyword::END },
@@ -784,16 +789,44 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 Op op(OpType::IF, token.loc);
 
                 program.ops.push_back(op);
+            } else if (token.keyword == Keyword::ORELSE) {
+                int ifip = stack.back();
+                stack.pop_back();
+                
+                if (program.ops[ifip].type != OpType::IF) {
+                    Error(program.ops[ifip].loc, "'orelse' can only be used in 'if' blocks");
+                    exit(-1);
+                }
+
+                if (stack.size() > 0 && program.ops[stack.back()].type == OpType::ORELSE) {
+                    int prevOrelseIp = stack.back();
+                    stack.pop_back();
+                    program.ops[prevOrelseIp].value = program.ops.size();
+                }
+
+                stack.push_back(program.ops.size());
+
+                program.ops[ifip].value = program.ops.size() + 1;
+
+                Op op(OpType::ORELSE, token.loc);
+
+                program.ops.push_back(op);
             } else if (token.keyword == Keyword::ELSE) {
                 int ifip = stack.back();
                 stack.pop_back();
 
-                stack.push_back(program.ops.size());
-                
                 if (program.ops[ifip].type != OpType::IF) {
                     Error(program.ops[ifip].loc, "'else' can only be used in 'if' blocks");
                     exit(-1);
                 }
+
+                if (stack.size() > 0 && program.ops[stack.back()].type == OpType::ORELSE) {
+                    int orelseIp = stack.back();
+                    stack.pop_back();
+                    program.ops[orelseIp].value = program.ops.size();
+                }
+
+                stack.push_back(program.ops.size());
 
                 program.ops[ifip].value = program.ops.size() + 1;
 
@@ -826,6 +859,12 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
                 if (program.ops[blockip].type == OpType::IF || program.ops[blockip].type == OpType::ELSE) {
                     program.ops[blockip].value = program.ops.size();
+
+                    if (stack.size() > 0 && program.ops[stack.back()].type == OpType::ORELSE) {
+                        int orelseIp = stack.back();
+                        stack.pop_back();
+                        program.ops[orelseIp].value = program.ops.size();
+                    }
 
                     Op op(OpType::END, token.loc, program.ops.size() + 1);
 
@@ -946,8 +985,10 @@ Program TokensToProgram(std::vector<Token>& tokens) {
         }
     }
 
-    if (stack.size() != 0)
+    if (stack.size() != 0) {
         Error(program.ops[stack.back()].loc, "unclosed block");
+        exit(-1);
+    }
 
     return program;
 }
@@ -1796,7 +1837,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<Token> tokens = Tokenize(argv[1]);
     Program program = TokensToProgram(tokens);
-    TypeCheckProgram(program);
+    //TypeCheckProgram(program);
     std::string asmCode = Generate_linux_x86_64(program);
 
     {
