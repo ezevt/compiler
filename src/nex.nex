@@ -4,11 +4,11 @@ const OpType.push 0 end
 const OpType.intrinsic 1 end
 
 const Op 40 end // u64 u64 ptr u32 u32
-fun Op.type ptr -- ptr -> 0 + end // u64
-fun Op.data ptr -- ptr -> 8 + end // u64
+fun Op.type     ptr -- ptr ->  0 + end // u64
+fun Op.data     ptr -- ptr ->  8 + end // u64
 fun Op.filepath ptr -- ptr -> 16 + end // ptr
-fun Op.line ptr -- ptr -> 24 + end // u64
-fun Op.col ptr -- ptr -> 32 + end // u64
+fun Op.line     ptr -- ptr -> 24 + end // u64
+fun Op.col      ptr -- ptr -> 32 + end // u64
 
 const Intrinsic.plus   0 end
 const Intrinsic.minus  1 end
@@ -235,11 +235,9 @@ fun CreateAndPushOp ptr ptr int int ->
         OpType.intrinsic Intrinsic.divmod file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "dump" streq if
         OpType.intrinsic Intrinsic.dump file r64 cast_ptr line r64 col r64 PushOp
-    orelse dup ParseInteger if
-        OpType.push swap file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup ParseInteger swap drop if
+        OpType.push over ParseInteger drop file r64 cast_ptr line r64 col r64 PushOp
     else
-        drop
-
         file r64 cast_ptr print
         ":" print
         line r64 printd

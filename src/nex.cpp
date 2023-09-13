@@ -1007,6 +1007,16 @@ void NotEnoughArguments(const Op& op) {
 
 typedef std::vector<DataType> DataStack;
 
+struct Block {
+    OpType type;
+    DataStack stack;
+    std::optional<DataStack> optStack;
+
+    Block() = default;
+    Block(OpType type_, DataStack stack_) : type(type_), stack(stack_), optStack({}) {}
+    Block(OpType type_, DataStack stack_, DataStack optStack_) : type(type_), stack(stack_), optStack({ optStack_ }) {}
+};
+
 void PrintDataStack(const DataStack& b) {
     for (int i = 0; i < b.size(); i++) {
         if (b[i] == DataType::INT) {
@@ -1062,7 +1072,7 @@ void TypeCheckContract(Op op, DataStack& stack, const Contract& contract) {
 
 void TypeCheckProgram(Program& program) {
     DataStack stack;
-    std::vector<std::tuple<DataStack, OpType>> blockStack;
+    std::vector<Block> blockStack;
     DataStack functionReturn;
 
     for (int i = 0; i < program.ops.size(); i++) {
@@ -1088,16 +1098,49 @@ void TypeCheckProgram(Program& program) {
                 Error(op.loc, "invalid argument for if-block condition. Expected BOOL");
                 exit(-1);
             }
-            blockStack.push_back({ DataStack(stack), op.type });
-        } else if (op.type == OpType::ELSE) {
-            DataStack expectedStack = std::get<0>(blockStack.back());
-            OpType blockType = std::get<1>(blockStack.back());
+
+            if (blockStack.size() > 0 && blockStack.back().type == OpType::ORELSE) {
+                Block orelseBlock = blockStack.back();
+                blockStack.pop_back();
+                if (!EqualStacks(orelseBlock.stack, stack)) {
+                    Error(op.loc, "orelse-if condition is not allowed to alter the types of the arguments in the stack");
+                    exit(-1);
+                }
+
+                blockStack.push_back({ op.type, DataStack(stack), orelseBlock.optStack.value() });
+            } else {
+                blockStack.push_back({ op.type, DataStack(stack) });
+            }
+
+        } else if (op.type == OpType::ORELSE) {
+            Block prevBlock = blockStack.back();
             blockStack.pop_back();
 
-            blockStack.push_back({ DataStack(stack), op.type });
-            stack = expectedStack;
+            if (prevBlock.optStack.has_value()) {
+                if (!EqualStacks(prevBlock.optStack.value(), stack)) {
+                    Error(op.loc, "orelse-if branches are not allowed to alter the types of the arguments in the stack");
+                    exit(-1);
+                }
+            } else {
+                blockStack.push_back({ op.type, prevBlock.stack, DataStack(stack) });
+            }
+
+            stack = prevBlock.stack;
+        } else if (op.type == OpType::ELSE) {
+            Block prevBlock = blockStack.back();
+            blockStack.pop_back();
+
+            if (prevBlock.optStack.has_value()) {
+                if (!EqualStacks(prevBlock.optStack.value(), stack)) {
+                    Error(op.loc, "orelse-if branches are not allowed to alter the types of the arguments in the stack");
+                    exit(-1);
+                }
+            }
+
+            blockStack.push_back({ op.type, DataStack(stack) });
+            stack = prevBlock.stack;
         } else if (op.type == OpType::WHILE) {
-            blockStack.push_back({ DataStack(stack), op.type });
+            blockStack.push_back({ op.type, DataStack(stack) });
         } else if (op.type == OpType::DO) {
             if (stack.size() < 1) {
                 NotEnoughArguments(op);
@@ -1112,33 +1155,38 @@ void TypeCheckProgram(Program& program) {
                 exit(-1);
             }
 
-            DataStack expectedStack = std::get<0>(blockStack.back());
-            OpType blockType = std::get<1>(blockStack.back());
+            Block prevBlock = blockStack.back();
             blockStack.pop_back();
 
-            if (!EqualStacks(stack, expectedStack)) {
+            if (!EqualStacks(stack, prevBlock.stack)) {
                 Error(op.loc, "while-do condition cannot alter the types of the arguments in the stack");
                 exit(-1);
             }
 
-            blockStack.push_back({ DataStack(stack), op.type });
+            blockStack.push_back({ op.type, DataStack(stack) });
         } else if (op.type == OpType::END) {
-            DataStack expectedStack = std::get<0>(blockStack.back());
-            OpType blockType = std::get<1>(blockStack.back());
+            Block prevBlock = blockStack.back();
             blockStack.pop_back();
 
-            if (blockType == OpType::IF) {
-                if (!EqualStacks(stack, expectedStack)) {
+            if (prevBlock.type == OpType::IF) {
+                if (prevBlock.optStack.has_value()) {
+                    if (!EqualStacks(prevBlock.optStack.value(), stack)) {
+                        Error(op.loc, "orelse-if branches are not allowed to alter the types of the arguments in the stack");
+                        exit(-1);
+                    }
+                }
+
+                if (!EqualStacks(stack, prevBlock.stack)) {
                     Error(op.loc, "else-less if cannot alter the types of the arguments in the stack");
                     exit(-1);
                 }
-            } else if (blockType == OpType::ELSE) {
-                if (!EqualStacks(stack, expectedStack)) {
+            } else if (prevBlock.type == OpType::ELSE) {
+                if (!EqualStacks(stack, prevBlock.stack)) {
                     Error(op.loc, "both branches of the if-block must result in the same types of the arguments in the stack");
                     exit(-1);
                 }
-            } else if (blockType == OpType::DO) {
-                if (!EqualStacks(stack, expectedStack)) {
+            } else if (prevBlock.type == OpType::DO) {
+                if (!EqualStacks(stack, prevBlock.stack)) {
                     Error(op.loc, "while-do cannot alter the types of the arguments in the stack");
                     exit(-1);
                 }
@@ -1146,15 +1194,14 @@ void TypeCheckProgram(Program& program) {
         } else if (op.type == OpType::skip_fun) {
 
         } else if (op.type == OpType::fun) {
-            blockStack.push_back({ DataStack(stack), op.type });
+            blockStack.push_back({ op.type, DataStack(stack) });
 
             stack = program.contracts[i].ins;
             functionReturn = program.contracts[i].outs;
         } else if (op.type == OpType::call) {
             TypeCheckContract(op, stack, program.contracts[op.value]);
         } else if (op.type == OpType::ret) {
-            DataStack prevStack = std::get<0>(blockStack.back());
-            OpType blockType = std::get<1>(blockStack.back());
+            Block prevBlock = blockStack.back();
             blockStack.pop_back();
 
             if (!EqualStacks(stack, functionReturn)) {
@@ -1162,7 +1209,7 @@ void TypeCheckProgram(Program& program) {
                 exit(-1);
             }
 
-            stack = prevStack;
+            stack = prevBlock.stack;
         } else if (op.type == OpType::intrinsic) {
             Intrinsic intrinsic = (Intrinsic)op.value;
 
@@ -1837,7 +1884,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<Token> tokens = Tokenize(argv[1]);
     Program program = TokensToProgram(tokens);
-    //TypeCheckProgram(program);
+    TypeCheckProgram(program);
     std::string asmCode = Generate_linux_x86_64(program);
 
     {
