@@ -50,7 +50,7 @@
 		"intrinsics": {
 			"patterns": [
 				{
-					"match": "\\b(dup|over|swap|drop|rot|dump|or|not|and|syscall1|syscall2|syscall3|syscall4|syscall5|syscall6|r8|s8|r16|s16|r32|s32|r64|s64|cast_int|cast_bool|cast_ptr|argc|argv)\\b",
+					"match": "\\b(dup|over|swap|drop|rot|dump|or|not|and|syscall0|syscall1|syscall2|syscall3|syscall4|syscall5|syscall6|r8|s8|r16|s16|r32|s32|r64|s64|cast_int|cast_bool|cast_ptr|argc|argv)\\b",
 					"name": "support.function.nex"
 				}
 			]

@@ -15,24 +15,31 @@ fun Op.filepath ptr -- ptr -> 16 + end // ptr
 fun Op.line     ptr -- ptr -> 24 + end // u64
 fun Op.col      ptr -- ptr -> 32 + end // u64
 
-const Intrinsic.plus   0 end
-const Intrinsic.minus  1 end
-const Intrinsic.mul    2 end
-const Intrinsic.divmod 3 end
-const Intrinsic.dump   4 end
-const Intrinsic.eq     5 end
-const Intrinsic.gt     6 end
-const Intrinsic.lt     7 end
-const Intrinsic.ge     8 end
-const Intrinsic.le     9 end
-const Intrinsic.ne    10 end
-const Intrinsic.and   11 end
-const Intrinsic.or    12 end
-const Intrinsic.dup   13 end
-const Intrinsic.over  14 end
-const Intrinsic.swap  15 end
-const Intrinsic.drop  16 end
-const Intrinsic.rot   17 end
+const Intrinsic.plus         0 end
+const Intrinsic.minus        1 end
+const Intrinsic.mul          2 end
+const Intrinsic.divmod       3 end
+const Intrinsic.dump         4 end
+const Intrinsic.eq           5 end
+const Intrinsic.gt           6 end
+const Intrinsic.lt           7 end
+const Intrinsic.ge           8 end
+const Intrinsic.le           9 end
+const Intrinsic.ne          10 end
+const Intrinsic.and         11 end
+const Intrinsic.or          12 end
+const Intrinsic.dup         13 end
+const Intrinsic.over        14 end
+const Intrinsic.swap        15 end
+const Intrinsic.drop        16 end
+const Intrinsic.rot         17 end
+const Intrinsic.syscall0    18 end
+const Intrinsic.syscall1    19 end
+const Intrinsic.syscall2    20 end
+const Intrinsic.syscall3    21 end
+const Intrinsic.syscall4    22 end
+const Intrinsic.syscall5    23 end
+const Intrinsic.syscall6    24 end
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
@@ -309,6 +316,55 @@ fun GenerateAssembly ->
                 "    push rbx\n"                out r64 fprint
                 "    push rax\n"                out r64 fprint
                 "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall0 = if
+                "    pop rax\n"                 out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall1 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall2 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    pop rsi\n"                 out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall3 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    pop rsi\n"                 out r64 fprint
+                "    pop rdx\n"                 out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall4 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    pop rsi\n"                 out r64 fprint
+                "    pop rdx\n"                 out r64 fprint
+                "    pop r10\n"                 out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall5 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    pop rsi\n"                 out r64 fprint
+                "    pop rdx\n"                 out r64 fprint
+                "    pop r10\n"                 out r64 fprint
+                "    pop r8\n"                  out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.syscall6 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rdi\n"                 out r64 fprint
+                "    pop rsi\n"                 out r64 fprint
+                "    pop rdx\n"                 out r64 fprint
+                "    pop r10\n"                 out r64 fprint
+                "    pop r8\n"                  out r64 fprint
+                "    pop r9\n"                  out r64 fprint
+                "    syscall\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
             else
                 "ERROR: unreachable intrinsic\n" eprint
                 1 exit
@@ -532,6 +588,20 @@ fun CreateAndPushOp ptr ptr int int ->
         OpType.intrinsic Intrinsic.drop file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "rot" streq if
         OpType.intrinsic Intrinsic.rot file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall0" streq if
+        OpType.intrinsic Intrinsic.syscall0 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall1" streq if
+        OpType.intrinsic Intrinsic.syscall1 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall2" streq if
+        OpType.intrinsic Intrinsic.syscall2 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall3" streq if
+        OpType.intrinsic Intrinsic.syscall3 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall4" streq if
+        OpType.intrinsic Intrinsic.syscall4 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall5" streq if
+        OpType.intrinsic Intrinsic.syscall5 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "syscall6" streq if
+        OpType.intrinsic Intrinsic.syscall6 file r64 cast_ptr line r64 col r64 PushOp
     
     // -- INTEGER ---------------------
     orelse dup ParseInteger swap drop if
