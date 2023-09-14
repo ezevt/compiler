@@ -155,6 +155,21 @@ void Error(const Loc& loc, const char* format, ...) {
     std::cerr << std::endl;
 }
 
+void Note(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    "ERROR: ";
+
+    char buffer[256]; // Adjust the buffer size as needed
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    std::cerr << buffer;
+    
+    va_end(args);
+
+    std::cerr << std::endl;
+}
+
 std::string Generate_linux_x86_64(Program& program) {
     std::stringstream out;
 
@@ -560,6 +575,36 @@ std::unordered_map<std::string, DataType> DataTypeDictionary = {
     { "ptr", DataType::PTR },
     { "bool", DataType::BOOL },
 };
+
+const char* GetIntrinsicName(const Intrinsic intrinsic) {
+
+    auto it = IntrinsicDictionary.begin();
+
+    while (it != IntrinsicDictionary.end()) {
+        if (it->second == intrinsic) {
+            return strdup(it->first.c_str());
+        }
+
+        it++;
+    }
+
+    return "";
+}
+
+const char* GetTypeName(const DataType type) {
+
+    auto it = DataTypeDictionary.begin();
+
+    while (it != DataTypeDictionary.end()) {
+        if (it->second == type) {
+            return strdup(it->first.c_str());
+        }
+
+        it++;
+    }
+
+    return "";
+}
 
 struct Function {
     int op;
@@ -995,7 +1040,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
 
 void NotEnoughArguments(const Op& op) {
     if (op.type == OpType::intrinsic) {
-        Error(op.loc, "not enough arguments for intrinsic");
+        Error(op.loc, "not enough arguments for '%s' intrinsic", GetIntrinsicName((Intrinsic)op.value));
     } else if (op.type == OpType::IF) {
         Error(op.loc, "not enough arguments for if-block condition");
     } else if (op.type == OpType::DO) {
@@ -1016,22 +1061,6 @@ struct Block {
     Block(OpType type_, DataStack stack_) : type(type_), stack(stack_), optStack({}) {}
     Block(OpType type_, DataStack stack_, DataStack optStack_) : type(type_), stack(stack_), optStack({ optStack_ }) {}
 };
-
-void PrintDataStack(const DataStack& b) {
-    for (int i = 0; i < b.size(); i++) {
-        if (b[i] == DataType::INT) {
-            std::cout << "INT, ";
-        } else if (b[i] == DataType::PTR) {
-            std::cout << "PTR, ";
-        } else if (b[i] == DataType::BOOL) {
-            std::cout << "BOOL, ";
-        } else {
-            std::cout << "UNKNOWN, ";
-        }
-
-    }
-    std::cout << std::endl;
-}
 
 bool EqualStacks(const DataStack& a, const DataStack& b) {
     if (a.size() != b.size()) {
@@ -1056,13 +1085,16 @@ void TypeCheckContract(Op op, DataStack& stack, const Contract& contract) {
         ins.pop_back();
 
         if (actual != expected) {
-            Error(op.loc, "unexpected data type");
+            Error(op.loc, "unexpected type %s", GetTypeName(actual));
+            Note("expected type %s", GetTypeName(expected));
             exit(-1);
         }
     }
 
     if (stack.size() < ins.size()) {
         Error(op.loc, "not enough arguments provided");
+        Note("expected %d, not %d", ins.size(), stack.size());
+        exit(-1);
     }
 
     for (DataType type : contract.outs) {
