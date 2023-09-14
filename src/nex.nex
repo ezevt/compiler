@@ -18,6 +18,14 @@ const Intrinsic.minus  1 end
 const Intrinsic.mul    2 end
 const Intrinsic.divmod 3 end
 const Intrinsic.dump   4 end
+const Intrinsic.eq     5 end
+const Intrinsic.gt     6 end
+const Intrinsic.lt     7 end
+const Intrinsic.ge     8 end
+const Intrinsic.le     9 end
+const Intrinsic.ne    10 end
+const Intrinsic.and   11 end
+const Intrinsic.or    12 end
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
@@ -206,7 +214,71 @@ fun GenerateAssembly ->
             orelse dup Op.value r64 Intrinsic.dump = if
                 "    pop rdi\n"                 out r64 fprint
                 "    call dump\n"               out r64 fprint
+            orelse dup Op.value r64 Intrinsic.eq = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmove rcx, rdx\n"          out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.gt = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmovg rcx, rdx\n"          out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.lt = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmovl rcx, rdx\n"          out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.ge = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmovge rcx, rdx\n"         out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.le = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmovle rcx, rdx\n"         out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.le = if
+                "    mov rcx, 0\n"              out r64 fprint
+                "    mov rdx, 1\n"              out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    cmp rax, rbx\n"            out r64 fprint
+                "    cmovne rcx, rdx\n"         out r64 fprint
+                "    push rcx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.and = if
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    and rbx, rax\n"            out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.or = if
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rax\n"                 out r64 fprint
+                "    or rbx, rax\n"            out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            else
+                "ERROR: unreachable intrinsic\n" eprint
+                1 exit
             end
+        else
+            "ERROR: unreachable op" eprint
+            1 exit
         end
 
         drop
@@ -355,6 +427,22 @@ fun CreateAndPushOp ptr ptr int int ->
         OpType.intrinsic Intrinsic.divmod file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "dump" streq if
         OpType.intrinsic Intrinsic.dump file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "=" streq if
+        OpType.intrinsic Intrinsic.eq file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup ">" streq if
+        OpType.intrinsic Intrinsic.gt file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "<" streq if
+        OpType.intrinsic Intrinsic.lt file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup ">=" streq if
+        OpType.intrinsic Intrinsic.ge file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "<=" streq if
+        OpType.intrinsic Intrinsic.le file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "!=" streq if
+        OpType.intrinsic Intrinsic.ne file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "and" streq if
+        OpType.intrinsic Intrinsic.and file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "or" streq if
+        OpType.intrinsic Intrinsic.or file r64 cast_ptr line r64 col r64 PushOp
     orelse dup ParseInteger swap drop if
         OpType.push over ParseInteger drop file r64 cast_ptr line r64 col r64 PushOp
     else

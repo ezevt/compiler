@@ -1,6 +1,6 @@
 10 20 * dump
 
-1 if
+10 20 < if
     10 dump
 else
     20 dump
