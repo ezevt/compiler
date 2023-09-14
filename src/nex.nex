@@ -2,10 +2,13 @@ include "std/std.nex"
 
 const OpType.push 0 end
 const OpType.intrinsic 1 end
+const OpType.if 2 end
+const OpType.else 3 end
+const OpType.end 4 end
 
 const Op 40 end // u64 u64 ptr u32 u32
 fun Op.type     ptr -- ptr ->  0 + end // u64
-fun Op.data     ptr -- ptr ->  8 + end // u64
+fun Op.value    ptr -- ptr ->  8 + end // u64
 fun Op.filepath ptr -- ptr -> 16 + end // ptr
 fun Op.line     ptr -- ptr -> 24 + end // u64
 fun Op.col      ptr -- ptr -> 32 + end // u64
@@ -18,34 +21,34 @@ const Intrinsic.dump   4 end
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
-alloc OpIdx u64 end
-0 OpIdx s64
+alloc OpCount u64 end
+0 OpCount s64
 
 fun PushOp int int ptr int int ->
-    OpIdx r64 Op * OpBuf +
+    OpCount r64 Op * OpBuf +
     dup Op.col      rot swap s64
     dup Op.line     rot swap s64
     dup Op.filepath rot swap s64
-    dup Op.data     rot swap s64
+    dup Op.value    rot swap s64
     dup Op.type     rot swap s64
     drop
-    OpIdx inc64
+    OpCount inc64
 end
 
 fun PrintOps ->
-    0 while dup OpIdx r64 < do
+    0 while dup OpCount r64 < do
         dup Op * OpBuf +
         over printd
         "->" print
         dup Op.filepath r64 cast_ptr print
         ":" print
-        dup Op.line r64 printd
+        dup Op.line  r64 printd
         ":" print
-        dup Op.col  r64 printd
+        dup Op.col   r64 printd
         ": type: " print
-        dup Op.type r64 printd
+        dup Op.type  r64 printd
         " data: " print
-        dup Op.data r64 printd
+        dup Op.value r64 printd
         "\n" print
         drop
 
@@ -92,12 +95,25 @@ fun CmdEcho ptr ->
     drop
 end
 
+fun PrintLoc
+    int // col
+    int // line
+    ptr // file
+->
+    print
+    ":" print
+    printd
+    ":" print
+    printd
+    ":" print
+end
+
 fun GenerateAssembly ->
     alloc out u64 end
     
     420                            // mode
     O_CREAT O_WRONLY or O_TRUNC or // flags
-    "output.asm"                      // path
+    "output.asm"                   // path
     AT_FDCWD
     openat
     out s64
@@ -143,7 +159,7 @@ fun GenerateAssembly ->
     "    ret\n"                                 out r64 fprint
     "global _start\n"                           out r64 fprint
     "_start:\n"                                 out r64 fprint
-    0 while dup OpIdx r64 < do
+    0 while dup OpCount r64 < do
         
         "addr_" out r64 fprint
         dup out r64 fprintd
@@ -152,32 +168,42 @@ fun GenerateAssembly ->
         dup Op * OpBuf +
 
         dup Op.type r64 OpType.push = if
-            "    mov rax, "                 out r64 fprint dup Op.data r64 out r64 fprintd "\n" out r64 fprint
+            "    mov rax, "                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
             "    push rax\n"                out r64 fprint
+        orelse dup Op.type r64 OpType.if = if
+            "    pop rax\n"                 out r64 fprint
+            "    test rax, rax\n"           out r64 fprint
+            "    jz addr_"                  out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
+        orelse dup Op.type r64 OpType.else = if
+            "    jmp addr_"                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
+        orelse dup Op.type r64 OpType.end = if
+            over 1 + over Op.value r64 != if
+                "    jmp addr_"                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
+            end
         orelse dup Op.type r64 OpType.intrinsic = if
-            dup Op.data r64 Intrinsic.plus = if
+            dup Op.value r64 Intrinsic.plus = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    add rax, rbx\n"            out r64 fprint
                 "    push rax\n"                out r64 fprint
-            orelse dup Op.data r64 Intrinsic.minus = if
+            orelse dup Op.value r64 Intrinsic.minus = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    sub rbx, rax\n"            out r64 fprint
                 "    push rbx\n"                out r64 fprint
-            orelse dup Op.data r64 Intrinsic.mul = if
+            orelse dup Op.value r64 Intrinsic.mul = if
                 "    pop rax\n"                 out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    mul rbx\n"                 out r64 fprint
                 "    push rax\n"                out r64 fprint
-            orelse dup Op.data r64 Intrinsic.divmod = if
+            orelse dup Op.value r64 Intrinsic.divmod = if
                 "    xor rdx, rdx\n"            out r64 fprint
                 "    pop rbx\n"                 out r64 fprint
                 "    pop rax\n"                 out r64 fprint
                 "    div rbx\n"                 out r64 fprint
                 "    push rax\n"                out r64 fprint
                 "    push rdx\n"                out r64 fprint
-            orelse dup Op.data r64 Intrinsic.dump = if
+            orelse dup Op.value r64 Intrinsic.dump = if
                 "    pop rdi\n"                 out r64 fprint
                 "    call dump\n"               out r64 fprint
             end
@@ -189,7 +215,7 @@ fun GenerateAssembly ->
     end drop
 
     "addr_" out r64 fprint
-    OpIdx r64 out r64 fprintd
+    OpCount r64 out r64 fprintd
     ":\n" out r64 fprint
 
     "    mov rax, 60\n" out r64 fprint
@@ -217,6 +243,33 @@ fun GenerateAssembly ->
     outputArgv CmdEcho
 end
 
+const PARSE_BLOCK_STACK_CAP 1024 end
+alloc ParseBlockStack PARSE_BLOCK_STACK_CAP end
+alloc ParseBlockStackCount u64 end
+0 ParseBlockStack s64
+
+fun ParseBlockStackPush int ->
+    ParseBlockStackCount r64 PARSE_BLOCK_STACK_CAP >= if
+        "ERROR: parse block stack overflow\n" eprint
+        1 exit
+    end
+
+    ParseBlockStackCount r64 u64 * ParseBlockStack +
+    s64
+    ParseBlockStackCount inc64
+end
+
+fun ParseBlockStackPop -- int ->
+    ParseBlockStackCount r64 0 <= if
+        "ERROR: parse block stack underflow\n" eprint
+        1 exit
+    end
+
+    ParseBlockStackCount dec64
+    ParseBlockStackCount r64 u64 * ParseBlockStack +
+    r64
+end
+
 fun CreateAndPushOp ptr ptr int int ->
     alloc file u64 end
     alloc line u64 end
@@ -225,7 +278,74 @@ fun CreateAndPushOp ptr ptr int int ->
     line s64
     file s64
 
-    dup "+" streq if
+    dup "if" streq if
+        OpCount r64 ParseBlockStackPush
+        OpType.if 0 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "else" streq if
+        ParseBlockStackCount r64 0 = if
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'else' can only be used in 'if' blocks\n" print
+
+            1 exit
+        end
+
+        ParseBlockStackPop
+        OpBuf over Op * +
+
+        dup Op.type r64 OpType.if != if
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'else' can only be used in 'if' blocks\n" print
+
+            1 exit
+        end
+
+        OpCount r64 1 + swap Op.value s64
+        drop
+
+        OpCount r64 ParseBlockStackPush
+
+        OpType.else 0 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "end" streq if
+        ParseBlockStackCount r64 0 = if
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'end' can only close 'if' and 'if-else' blocks\n" print
+
+            1 exit
+        end
+
+        ParseBlockStackPop
+        OpBuf over Op * +
+
+        dup  Op.type r64 OpType.if   !=
+        over Op.type r64 OpType.else != and if
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'end' can only close 'if' and 'if-else' blocks\n" print
+
+            1 exit
+        end
+
+        OpCount r64 swap Op.value s64
+
+        drop
+
+        OpType.end OpCount r64 1 + file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "+" streq if
         OpType.intrinsic Intrinsic.plus file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "-" streq if
         OpType.intrinsic Intrinsic.minus file r64 cast_ptr line r64 col r64 PushOp
@@ -238,12 +358,12 @@ fun CreateAndPushOp ptr ptr int int ->
     orelse dup ParseInteger swap drop if
         OpType.push over ParseInteger drop file r64 cast_ptr line r64 col r64 PushOp
     else
-        file r64 cast_ptr print
-        ":" print
-        line r64 printd
-        ":" print
-        col r64 printd
-        ": ERROR: unknown word '" print
+        col r64
+        line r64
+        file r64 cast_ptr
+        PrintLoc
+
+        " ERROR: unknown word '" print
         dup print
         "'\n" print
 
@@ -261,7 +381,7 @@ fun ParseFile ptr ->
     O_RDONLY
     filepath r64 cast_ptr
     AT_FDCWD
-    openat 
+    openat
 
     dup 0 < if
         "could not open file '" eprint filepath r64 cast_ptr eprint "'\n" eprint
@@ -312,10 +432,7 @@ fun ParseFile ptr ->
         content r64 cast_ptr index r64 + r8
         dup IsSpace if
             bufIdx r32 0 > if
-                0
-                buf bufIdx r32 +
-                s8 // make it null-terminated
-                
+                // buf is already null-terminated because of the previous 'memset'
                 buf filepath r64 cast_ptr line r64 bufCol r64 CreateAndPushOp
                 
                 0 bufIdx s32
@@ -323,6 +440,7 @@ fun ParseFile ptr ->
         else
             bufIdx r32 0 = if
                 col r64 bufCol s64
+                0 buf 256 memset
             end
 
             dup

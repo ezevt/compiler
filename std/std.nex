@@ -507,3 +507,19 @@ fun ParseInteger ptr -- int bool ->
 
     swap r8 0 =
 end
+
+fun memset
+    int // value
+    ptr // memory
+    int // size
+->
+    alloc value u64 end
+    rot value s64
+
+    while dup 0 > do
+        over over 1 - +
+        value r64 swap s8
+
+        1 -
+    end drop drop
+end

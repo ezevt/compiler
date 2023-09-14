@@ -1894,7 +1894,7 @@ int main(int argc, char* argv[]) {
 
         outFile.close();
     }
-
+    
     CmdEcho("nasm -felf64 out.asm");
     CmdEcho("ld -o out out.o");
 
