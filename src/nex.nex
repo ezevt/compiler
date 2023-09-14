@@ -26,6 +26,11 @@ const Intrinsic.le     9 end
 const Intrinsic.ne    10 end
 const Intrinsic.and   11 end
 const Intrinsic.or    12 end
+const Intrinsic.dup   13 end
+const Intrinsic.over  14 end
+const Intrinsic.swap  15 end
+const Intrinsic.drop  16 end
+const Intrinsic.rot   17 end
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
@@ -270,8 +275,32 @@ fun GenerateAssembly ->
             orelse dup Op.value r64 Intrinsic.or = if
                 "    pop rbx\n"                 out r64 fprint
                 "    pop rax\n"                 out r64 fprint
-                "    or rbx, rax\n"            out r64 fprint
+                "    or rbx, rax\n"             out r64 fprint
                 "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.dup = if
+                "    pop rax\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+                "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.over = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    push rbx\n"                out r64 fprint
+                "    push rax\n"                out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.swap = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    push rax\n"                out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.drop = if
+                "    pop rax\n"                 out r64 fprint
+            orelse dup Op.value r64 Intrinsic.rot = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    pop rcx\n"                 out r64 fprint
+                "    push rbx\n"                out r64 fprint
+                "    push rax\n"                out r64 fprint
+                "    push rcx\n"                out r64 fprint
             else
                 "ERROR: unreachable intrinsic\n" eprint
                 1 exit
@@ -350,6 +379,7 @@ fun CreateAndPushOp ptr ptr int int ->
     line s64
     file s64
 
+    // -- KEYWORDS --------------------
     dup "if" streq if
         OpCount r64 ParseBlockStackPush
         OpType.if 0 file r64 cast_ptr line r64 col r64 PushOp
@@ -417,6 +447,9 @@ fun CreateAndPushOp ptr ptr int int ->
         drop
 
         OpType.end OpCount r64 1 + file r64 cast_ptr line r64 col r64 PushOp
+
+
+    // -- INTRINSICS ------------------
     orelse dup "+" streq if
         OpType.intrinsic Intrinsic.plus file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "-" streq if
@@ -443,6 +476,18 @@ fun CreateAndPushOp ptr ptr int int ->
         OpType.intrinsic Intrinsic.and file r64 cast_ptr line r64 col r64 PushOp
     orelse dup "or" streq if
         OpType.intrinsic Intrinsic.or file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "dup" streq if
+        OpType.intrinsic Intrinsic.dup file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "over" streq if
+        OpType.intrinsic Intrinsic.over file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "swap" streq if
+        OpType.intrinsic Intrinsic.swap file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "drop" streq if
+        OpType.intrinsic Intrinsic.drop file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "rot" streq if
+        OpType.intrinsic Intrinsic.rot file r64 cast_ptr line r64 col r64 PushOp
+    
+    // -- INTEGER ---------------------
     orelse dup ParseInteger swap drop if
         OpType.push over ParseInteger drop file r64 cast_ptr line r64 col r64 PushOp
     else
