@@ -1,10 +1,12 @@
 include "std/std.nex"
 
-const OpType.push 0 end
-const OpType.intrinsic 1 end
-const OpType.if 2 end
-const OpType.else 3 end
-const OpType.end 4 end
+const OpType.push       0 end
+const OpType.intrinsic  1 end
+const OpType.if         2 end
+const OpType.else       3 end
+const OpType.while      4 end
+const OpType.do         5 end
+const OpType.end        6 end
 
 const Op 40 end // u64 u64 ptr u32 u32
 fun Op.type     ptr -- ptr ->  0 + end // u64
@@ -189,6 +191,12 @@ fun GenerateAssembly ->
             "    jz addr_"                  out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
         orelse dup Op.type r64 OpType.else = if
             "    jmp addr_"                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
+        orelse dup Op.type r64 OpType.while = if
+            // while
+        orelse dup Op.type r64 OpType.do = if
+            "    pop rax\n"                 out r64 fprint
+            "    test rax, rax\n"           out r64 fprint
+            "    jz addr_"                  out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
         orelse dup Op.type r64 OpType.end = if
             over 1 + over Op.value r64 != if
                 "    jmp addr_"                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
@@ -306,7 +314,7 @@ fun GenerateAssembly ->
                 1 exit
             end
         else
-            "ERROR: unreachable op" eprint
+            "ERROR: unreachable op\n" eprint
             1 exit
         end
 
@@ -415,14 +423,17 @@ fun CreateAndPushOp ptr ptr int int ->
         OpCount r64 ParseBlockStackPush
 
         OpType.else 0 file r64 cast_ptr line r64 col r64 PushOp
-    orelse dup "end" streq if
+    orelse dup "while" streq if
+        OpCount r64 ParseBlockStackPush
+        OpType.while 0 file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "do" streq if
         ParseBlockStackCount r64 0 = if
             col r64
             line r64
             file r64 cast_ptr
             PrintLoc
 
-            ": ERROR: 'end' can only close 'if' and 'if-else' blocks\n" print
+            ": ERROR: 'do' can only be used in 'while' blocks\n" print
 
             1 exit
         end
@@ -430,23 +441,58 @@ fun CreateAndPushOp ptr ptr int int ->
         ParseBlockStackPop
         OpBuf over Op * +
 
-        dup  Op.type r64 OpType.if   !=
-        over Op.type r64 OpType.else != and if
+        dup Op.type r64 OpType.while != if
             col r64
             line r64
             file r64 cast_ptr
             PrintLoc
 
-            ": ERROR: 'end' can only close 'if' and 'if-else' blocks\n" print
+            ": ERROR: 'do' can only be used in 'while' blocks\n" print
 
             1 exit
         end
 
-        OpCount r64 swap Op.value s64
-
         drop
 
-        OpType.end OpCount r64 1 + file r64 cast_ptr line r64 col r64 PushOp
+        OpCount r64 ParseBlockStackPush
+
+        OpType.do swap file r64 cast_ptr line r64 col r64 PushOp
+    orelse dup "end" streq if
+        ParseBlockStackCount r64 0 = if
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
+
+            1 exit
+        end
+
+        ParseBlockStackPop
+        OpBuf over Op * +
+
+        dup  Op.type r64 OpType.if   =
+        over Op.type r64 OpType.else = or if
+            OpCount r64 over Op.value s64
+
+            OpType.end OpCount r64 1 + file r64 cast_ptr line r64 col r64 PushOp
+        orelse dup Op.type r64 OpType.do = if
+            OpType.end over Op.value r64 file r64 cast_ptr line r64 col r64 PushOp
+
+            OpCount r64 over Op.value s64
+        else
+            col r64
+            line r64
+            file r64 cast_ptr
+            PrintLoc
+
+            ": ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
+
+            1 exit
+        end
+
+        drop drop
 
 
     // -- INTRINSICS ------------------
@@ -594,6 +640,11 @@ fun ParseFile ptr ->
 
     bufIdx r32 0 > if
         buf filepath r64 cast_ptr line r64 bufCol r64 CreateAndPushOp
+    end
+
+    ParseBlockStackCount r64 0 != if
+        "ERROR: unclosed block\n" eprint
+        1 exit
     end
 
     fd r64 close drop
