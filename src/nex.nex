@@ -8,12 +8,9 @@ const OpType.while      4 end
 const OpType.do         5 end
 const OpType.end        6 end
 
-const Op 40 end // u64 u64 ptr u32 u32
-fun Op.type     ptr -- ptr ->  0 + end // u64
-fun Op.value    ptr -- ptr ->  8 + end // u64
-fun Op.filepath ptr -- ptr -> 16 + end // ptr
-fun Op.line     ptr -- ptr -> 24 + end // u64
-fun Op.col      ptr -- ptr -> 32 + end // u64
+const Op 16 end // u64 u64
+fun Op.type  ptr -- ptr ->  0 + end // u64
+fun Op.value ptr -- ptr ->  8 + end // u64
 
 const Intrinsic.plus         0 end
 const Intrinsic.minus        1 end
@@ -41,18 +38,51 @@ const Intrinsic.syscall4    22 end
 const Intrinsic.syscall5    23 end
 const Intrinsic.syscall6    24 end
 
+fun GetIntrinsicByName ptr -- int bool ->
+    alloc name pointer end
+    name s64
+
+    true
+           name r64 cast_ptr "+"          streq if Intrinsic.plus
+    orelse name r64 cast_ptr "-"          streq if Intrinsic.minus
+    orelse name r64 cast_ptr "*"          streq if Intrinsic.mul
+    orelse name r64 cast_ptr "divmod"     streq if Intrinsic.divmod
+    orelse name r64 cast_ptr "dump"       streq if Intrinsic.dump
+    orelse name r64 cast_ptr "="          streq if Intrinsic.eq
+    orelse name r64 cast_ptr ">"          streq if Intrinsic.gt
+    orelse name r64 cast_ptr "<"          streq if Intrinsic.lt
+    orelse name r64 cast_ptr ">="         streq if Intrinsic.ge
+    orelse name r64 cast_ptr "<="         streq if Intrinsic.le
+    orelse name r64 cast_ptr "!="         streq if Intrinsic.ne
+    orelse name r64 cast_ptr "and"        streq if Intrinsic.and
+    orelse name r64 cast_ptr "or"         streq if Intrinsic.or
+    orelse name r64 cast_ptr "dup"        streq if Intrinsic.dup
+    orelse name r64 cast_ptr "over"       streq if Intrinsic.over
+    orelse name r64 cast_ptr "swap"       streq if Intrinsic.swap
+    orelse name r64 cast_ptr "drop"       streq if Intrinsic.drop
+    orelse name r64 cast_ptr "rot"        streq if Intrinsic.rot
+    orelse name r64 cast_ptr "syscall0"   streq if Intrinsic.syscall0
+    orelse name r64 cast_ptr "syscall1"   streq if Intrinsic.syscall1
+    orelse name r64 cast_ptr "syscall2"   streq if Intrinsic.syscall2
+    orelse name r64 cast_ptr "syscall3"   streq if Intrinsic.syscall3
+    orelse name r64 cast_ptr "syscall4"   streq if Intrinsic.syscall4
+    orelse name r64 cast_ptr "syscall5"   streq if Intrinsic.syscall5
+    orelse name r64 cast_ptr "syscall6"   streq if Intrinsic.syscall6
+    else
+        drop false 0
+    end
+    swap
+end
+
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
 alloc OpCount u64 end
 0 OpCount s64
 
-fun PushOp int int ptr int int ->
+fun PushOp int int -> // type value
     OpCount r64 Op * OpBuf +
-    dup Op.col      rot swap s64
-    dup Op.line     rot swap s64
-    dup Op.filepath rot swap s64
-    dup Op.value    rot swap s64
-    dup Op.type     rot swap s64
+    dup Op.value rot swap s64
+    dup Op.type  rot swap s64
     drop
     OpCount inc64
 end
@@ -61,15 +91,9 @@ fun PrintOps ->
     0 while dup OpCount r64 < do
         dup Op * OpBuf +
         over printd
-        "->" print
-        dup Op.filepath r64 cast_ptr print
-        ":" print
-        dup Op.line  r64 printd
-        ":" print
-        dup Op.col   r64 printd
         ": type: " print
         dup Op.type  r64 printd
-        " data: " print
+        " value: " print
         dup Op.value r64 printd
         "\n" print
         drop
@@ -434,7 +458,7 @@ fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- TokenType
     swap buf s64
 
     while
-        dup Lexer.content r64 // index before trim
+        dup  Lexer.content r64 // index before trim
         over Lexer.content StrTrimLeft
         over Lexer.content r64 // index after trim
         swap - over Lexer.ccol r64 +
@@ -536,7 +560,6 @@ fun ParseFile ptr ->
     alloc content pointer end
     alloc contentLength u64 end
     statbuf stat.st_size r64 contentLength s64
-    
 
     0                        // offset
     fd r64                   // fd
@@ -562,160 +585,112 @@ fun ParseFile ptr ->
     do
         // buf is already null-terminated because of the previous 'memset'
         
-        // -- KEYWORDS --------------------
-        buf "if" streq if
-            OpCount r64 ParseBlockStackPush
-            OpType.if 0 lexer Lexer.Loc PushOp
-        orelse buf "else" streq if
-            ParseBlockStackCount r64 0 = if
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'else' can only be used in 'if' blocks\n" print
-
-                1 exit
-            end
-
-            ParseBlockStackPop
-            OpBuf over Op * +
-
-            dup Op.type r64 OpType.if != if
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'else' can only be used in 'if' blocks\n" print
-
-                1 exit
-            end
-
-            OpCount r64 1 + swap Op.value s64
-            drop
-
-            OpCount r64 ParseBlockStackPush
-
-            OpType.else 0 lexer Lexer.Loc PushOp
-        orelse buf "while" streq if
-            OpCount r64 ParseBlockStackPush
-            OpType.while 0 lexer Lexer.Loc PushOp
-        orelse buf "do" streq if
-            ParseBlockStackCount r64 0 = if
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'do' can only be used in 'while' blocks\n" print
-
-                1 exit
-            end
-
-            ParseBlockStackPop
-            OpBuf over Op * +
-
-            dup Op.type r64 OpType.while != if
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'do' can only be used in 'while' blocks\n" print
-
-                1 exit
-            end
-
-            drop
-
-            OpCount r64 ParseBlockStackPush
-
-            OpType.do swap lexer Lexer.Loc PushOp
-        orelse buf "end" streq if
-            ParseBlockStackCount r64 0 = if
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
-
-                1 exit
-            end
-
-            ParseBlockStackPop
-            OpBuf over Op * +
-
-            dup  Op.type r64 OpType.if   =
-            over Op.type r64 OpType.else = or if
-                OpCount r64 over Op.value s64
-
-                OpType.end OpCount r64 1 + lexer Lexer.Loc PushOp
-            orelse dup Op.type r64 OpType.do = if
-                OpType.end over Op.value r64 lexer Lexer.Loc PushOp
-
-                OpCount r64 over Op.value s64
-            else
-                lexer Lexer.PrintLoc
-
-                ": ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
-
-                1 exit
-            end
-
-            drop drop
-
-
-        // -- INTRINSICS ------------------
-        orelse buf "+" streq if
-            OpType.intrinsic Intrinsic.plus     lexer Lexer.Loc PushOp
-        orelse buf "-" streq if
-            OpType.intrinsic Intrinsic.minus    lexer Lexer.Loc PushOp
-        orelse buf "*" streq if
-            OpType.intrinsic Intrinsic.mul      lexer Lexer.Loc PushOp
-        orelse buf "divmod" streq if
-            OpType.intrinsic Intrinsic.divmod   lexer Lexer.Loc PushOp
-        orelse buf "dump" streq if
-            OpType.intrinsic Intrinsic.dump     lexer Lexer.Loc PushOp
-        orelse buf "=" streq if
-            OpType.intrinsic Intrinsic.eq       lexer Lexer.Loc PushOp
-        orelse buf ">" streq if
-            OpType.intrinsic Intrinsic.gt       lexer Lexer.Loc PushOp
-        orelse buf "<" streq if
-            OpType.intrinsic Intrinsic.lt       lexer Lexer.Loc PushOp
-        orelse buf ">=" streq if
-            OpType.intrinsic Intrinsic.ge       lexer Lexer.Loc PushOp
-        orelse buf "<=" streq if
-            OpType.intrinsic Intrinsic.le       lexer Lexer.Loc PushOp
-        orelse buf "!=" streq if
-            OpType.intrinsic Intrinsic.ne       lexer Lexer.Loc PushOp
-        orelse buf "and" streq if
-            OpType.intrinsic Intrinsic.and      lexer Lexer.Loc PushOp
-        orelse buf "or" streq if
-            OpType.intrinsic Intrinsic.or       lexer Lexer.Loc PushOp
-        orelse buf "dup" streq if
-            OpType.intrinsic Intrinsic.dup      lexer Lexer.Loc PushOp
-        orelse buf "over" streq if
-            OpType.intrinsic Intrinsic.over     lexer Lexer.Loc PushOp
-        orelse buf "swap" streq if
-            OpType.intrinsic Intrinsic.swap     lexer Lexer.Loc PushOp
-        orelse buf "drop" streq if
-            OpType.intrinsic Intrinsic.drop     lexer Lexer.Loc PushOp
-        orelse buf "rot" streq if
-            OpType.intrinsic Intrinsic.rot      lexer Lexer.Loc PushOp
-        orelse buf "syscall0" streq if
-            OpType.intrinsic Intrinsic.syscall0 lexer Lexer.Loc PushOp
-        orelse buf "syscall1" streq if
-            OpType.intrinsic Intrinsic.syscall1 lexer Lexer.Loc PushOp
-        orelse buf "syscall2" streq if
-            OpType.intrinsic Intrinsic.syscall2 lexer Lexer.Loc PushOp
-        orelse buf "syscall3" streq if
-            OpType.intrinsic Intrinsic.syscall3 lexer Lexer.Loc PushOp
-        orelse buf "syscall4" streq if
-            OpType.intrinsic Intrinsic.syscall4 lexer Lexer.Loc PushOp
-        orelse buf "syscall5" streq if
-            OpType.intrinsic Intrinsic.syscall5 lexer Lexer.Loc PushOp
-        orelse buf "syscall6" streq if
-            OpType.intrinsic Intrinsic.syscall6 lexer Lexer.Loc PushOp
-
-        // -- INTEGER ---------------------
-        orelse buf ParseInteger swap drop if
-            OpType.push buf ParseInteger drop lexer Lexer.Loc PushOp
+        buf GetIntrinsicByName if
+            OpType.intrinsic swap PushOp
         else
+            drop
+            // -- KEYWORDS --------------------
+            buf "if" streq if
+                OpCount r64 ParseBlockStackPush
+                OpType.if 0 PushOp
+            orelse buf "else" streq if
+                ParseBlockStackCount r64 0 = if
+                    lexer Lexer.PrintLoc
 
-            lexer Lexer.PrintLoc
+                    " ERROR: 'else' can only be used in 'if' blocks\n" print
 
-            " ERROR: unknown word '" print
-            buf print
-            "'\n" print
+                    1 exit
+                end
 
-            1 exit
+                ParseBlockStackPop
+                OpBuf over Op * +
+
+                dup Op.type r64 OpType.if != if
+                    lexer Lexer.PrintLoc
+
+                    " ERROR: 'else' can only be used in 'if' blocks\n" print
+
+                    1 exit
+                end
+
+                OpCount r64 1 + swap Op.value s64
+                drop
+
+                OpCount r64 ParseBlockStackPush
+
+                OpType.else 0 PushOp
+            orelse buf "while" streq if
+                OpCount r64 ParseBlockStackPush
+                OpType.while 0 PushOp
+            orelse buf "do" streq if
+                ParseBlockStackCount r64 0 = if
+                    lexer Lexer.PrintLoc
+
+                    " ERROR: 'do' can only be used in 'while' blocks\n" print
+
+                    1 exit
+                end
+
+                ParseBlockStackPop
+                OpBuf over Op * +
+
+                dup Op.type r64 OpType.while != if
+                    lexer Lexer.PrintLoc
+
+                    " ERROR: 'do' can only be used in 'while' blocks\n" print
+
+                    1 exit
+                end
+
+                drop
+
+                OpCount r64 ParseBlockStackPush
+
+                OpType.do swap PushOp
+            orelse buf "end" streq if
+                ParseBlockStackCount r64 0 = if
+                    lexer Lexer.PrintLoc
+
+                    " ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
+
+                    1 exit
+                end
+
+                ParseBlockStackPop
+                OpBuf over Op * +
+
+                dup  Op.type r64 OpType.if   =
+                over Op.type r64 OpType.else = or if
+                    OpCount r64 over Op.value s64
+
+                    OpType.end OpCount r64 1 + PushOp
+                orelse dup Op.type r64 OpType.do = if
+                    OpType.end over Op.value r64 PushOp
+
+                    OpCount r64 over Op.value s64
+                else
+                    lexer Lexer.PrintLoc
+
+                    " ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
+
+                    1 exit
+                end
+
+                drop drop
+
+            // -- INTEGER ---------------------
+            orelse buf ParseInteger swap drop if
+                OpType.push buf ParseInteger drop PushOp
+            else
+
+                lexer Lexer.PrintLoc
+
+                " ERROR: unknown word '" print
+                buf print
+                "'\n" print
+
+                1 exit
+            end
         end
     end
 
