@@ -1,8 +1,6 @@
 
-10 while dup 0 >= do
+
+10 while dup 0 > do
     dup dump
-    dup 5 = if
-        1 60 syscall1 drop
-    end
     1 -
 end drop

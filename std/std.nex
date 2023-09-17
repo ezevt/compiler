@@ -1,7 +1,15 @@
 const NULL 0 end
 
-const true 1 end
-const false 0 end
+fun true  -- bool -> 1 cast_bool end
+fun false -- bool -> 0 cast_bool end
+
+fun lnot bool -- bool ->
+    if
+        0 cast_bool
+    else
+        1 cast_bool
+    end
+end
 
 const stdin  0 end
 const stdout 1 end
@@ -522,4 +530,17 @@ fun memset
 
         1 -
     end drop drop
+end
+
+fun StrTrimLeft ptr -> // ptr to ptr(str)
+    while
+        dup r64 cast_ptr r8 0 != if
+            dup r64 cast_ptr r8 32 = // 10: ascii code for ' '
+        else
+            false
+        end
+    do
+        dup inc64
+    end
+    drop
 end
