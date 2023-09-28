@@ -453,7 +453,7 @@ fun Lexer.NextLine ptr ->
     drop
 end
 
-fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- TokenType
+fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- ?eof
     alloc buf pointer end
     swap buf s64
 
@@ -461,7 +461,7 @@ fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- TokenType
         dup  Lexer.content r64 // index before trim
         over Lexer.content StrTrimLeft
         over Lexer.content r64 // index after trim
-        swap - over Lexer.ccol r64 +
+        swap - over Lexer.ccol r64 + // apply index diference to ccol
         over Lexer.ccol s64
         dup Lexer.content r64 cast_ptr r8 0 = if
             false

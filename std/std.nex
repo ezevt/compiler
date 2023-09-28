@@ -1,4 +1,4 @@
-const NULL 0 end
+fun NULL -- ptr -> 0 cast_ptr end
 
 fun true  -- bool -> 1 cast_bool end
 fun false -- bool -> 0 cast_bool end
@@ -364,7 +364,30 @@ fun fork -- int -> SYS_fork syscall0 end
 fun getpid -- int -> SYS_getpid syscall0 end
 fun execve ptr ptr ptr -- int -> SYS_execve syscall3 end
 fun wait4 ptr int ptr int -- int -> SYS_wait4 syscall4 end
+fun brk ptr -- int -> SYS_brk syscall1 end
 
+fun sbrk int -- ptr ->
+    0 cast_ptr brk
+
+    dup 0 < if
+        1 exit
+    end
+
+    dup
+
+    cast_ptr + brk
+
+    dup 0 < if
+        1 exit
+    end
+
+    swap drop
+    cast_ptr
+end
+
+fun malloc int -- ptr -> // TODO: implement better malloc
+    sbrk
+end
 
 const timespec 16 end
 
