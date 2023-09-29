@@ -74,6 +74,18 @@ fun GetIntrinsicByName ptr -- int bool ->
     swap
 end
 
+fun IsKeyword ptr -- bool ->
+    alloc name pointer end
+    name s64
+
+    name r64 cast_ptr "if"    streq
+    name r64 cast_ptr "else"  streq or
+    name r64 cast_ptr "while" streq or
+    name r64 cast_ptr "do"    streq or
+    name r64 cast_ptr "end"   streq or
+    name r64 cast_ptr "const" streq or
+end
+
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
 alloc OpCount u64 end
@@ -550,6 +562,20 @@ fun ParseBlockStackPop -- int ->
     r64
 end
 
+fun CheckNameRedefinition ptr ptr -> // name lexer
+    over IsKeyword if
+        Lexer.PrintLoc
+        " ERROR: refefinition of the keyword '" print print "'\n" print
+        1 exit
+    orelse over GetIntrinsicByName swap drop if
+        Lexer.PrintLoc
+        " ERROR: refefinition of the intrinsic '" print print "'\n" print
+        1 exit
+    else
+        drop drop
+    end
+end
+
 fun ParseFile ptr ->
     alloc filepath string end
     filepath s64
@@ -616,9 +642,7 @@ fun ParseFile ptr ->
             orelse buf "else" streq if
                 ParseBlockStackCount r64 0 = if
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'else' can only be used in 'if' blocks\n" print
-
                     1 exit
                 end
 
@@ -627,9 +651,7 @@ fun ParseFile ptr ->
 
                 dup Op.type r64 OpType.if != if
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'else' can only be used in 'if' blocks\n" print
-
                     1 exit
                 end
 
@@ -645,9 +667,7 @@ fun ParseFile ptr ->
             orelse buf "do" streq if
                 ParseBlockStackCount r64 0 = if
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'do' can only be used in 'while' blocks\n" print
-
                     1 exit
                 end
 
@@ -656,9 +676,7 @@ fun ParseFile ptr ->
 
                 dup Op.type r64 OpType.while != if
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'do' can only be used in 'while' blocks\n" print
-
                     1 exit
                 end
 
@@ -670,9 +688,7 @@ fun ParseFile ptr ->
             orelse buf "end" streq if
                 ParseBlockStackCount r64 0 = if
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
-
                     1 exit
                 end
 
@@ -690,21 +706,48 @@ fun ParseFile ptr ->
                     OpCount r64 over Op.value s64
                 else
                     lexer Lexer.PrintLoc
-
                     " ERROR: 'end' can only close 'if', 'if-else' and 'while-do' blocks\n" print
-
                     1 exit
                 end
 
                 drop drop
 
+            orelse buf "const" streq if
+                0 buf 256 memset
+                buf lexer Lexer.NextToken
+                TokenType.word != if
+                    lexer Lexer.PrintLoc
+                    " ERROR: expected name\n" print
+                    1 exit
+                end
+
+                buf lexer CheckNameRedefinition
+
+                0 buf 256 memset
+                buf lexer Lexer.NextToken
+
+                TokenType.integer != if
+                    lexer Lexer.PrintLoc
+                    " ERROR: expected value\n" print
+                    1 exit
+                end
+
+                buf ParseInteger drop dump
+
+                0 buf 256 memset
+                buf lexer Lexer.NextToken
+                drop
+
+                buf "end" streq lnot if
+                    lexer Lexer.PrintLoc
+                    " ERROR: expected 'end' keyword\n" print
+                    1 exit
+                end
             else
                 lexer Lexer.PrintLoc
-
                 " ERROR: unknown word '" print
                 buf print
                 "'\n" print
-
                 1 exit
             end
         orelse dup TokenType.integer = if
