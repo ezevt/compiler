@@ -839,7 +839,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 stack.pop_back();
                 
                 if (program.ops[ifip].type != OpType::IF) {
-                    Error(program.ops[ifip].loc, "'orelse' can only be used in 'if' blocks");
+                    Error(token.loc, "'orelse' can only be used in 'if' blocks");
                     exit(-1);
                 }
 
@@ -861,7 +861,7 @@ Program TokensToProgram(std::vector<Token>& tokens) {
                 stack.pop_back();
 
                 if (program.ops[ifip].type != OpType::IF) {
-                    Error(program.ops[ifip].loc, "'else' can only be used in 'if' blocks");
+                    Error(token.loc, "'else' can only be used in 'if' blocks");
                     exit(-1);
                 }
 

@@ -419,6 +419,11 @@ fun GenerateAssembly ->
     outputArgv CmdEcho
 end
 
+const TokenType u64 end
+const TokenType.eof     0 end
+const TokenType.word    1 end
+const TokenType.integer 2 end
+
 const Lexer 40 end
 fun Lexer.content ptr -- ptr ->   0 + end // ptr
 fun Lexer.file    ptr -- ptr ->   8 + end // ptr
@@ -453,7 +458,7 @@ fun Lexer.NextLine ptr ->
     drop
 end
 
-fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- ?eof
+fun Lexer.NextToken ptr ptr -- int -> // buf Lexer -- tokenType
     alloc buf pointer end
     swap buf s64
 
@@ -473,18 +478,29 @@ fun Lexer.NextToken ptr ptr -- bool -> // buf Lexer -- ?eof
     end
 
     dup Lexer.content r64 cast_ptr r8 0 = if
-        drop false
+        drop TokenType.eof
     else
         dup Lexer.ccol r64 over Lexer.col s64
 
+        TokenType.integer swap
+
         while dup Lexer.content r64 cast_ptr r8 dup IsSpace lnot swap 0 != and do
-            dup Lexer.content r64 cast_ptr r8 buf r64 cast_ptr s8
+            dup Lexer.content r64 cast_ptr r8
+            
+            dup IsDigit lnot if
+                rot drop
+                TokenType.word
+                rot rot
+            end
+
+            buf r64 cast_ptr s8
+            
             dup Lexer.content inc64
             buf inc64
             dup Lexer.ccol inc64
         end
 
-        drop true
+        drop
     end
 end
 
@@ -576,21 +592,25 @@ fun ParseFile ptr ->
     end
 
     alloc buf 256 end
+    alloc tokenType TokenType end
     alloc lexer Lexer end
     filepath r64 cast_ptr content r64 cast_ptr lexer Lexer.Construct
     
     while
         0 buf 256 memset
         buf lexer Lexer.NextToken
+        dup tokenType s64
+        TokenType.eof !=
     do
         // buf is already null-terminated because of the previous 'memset'
         
-        buf GetIntrinsicByName if
-            OpType.intrinsic swap PushOp
-        else
-            drop
+        tokenType r64
+        dup TokenType.word = if
+            buf GetIntrinsicByName swap drop if
+                OpType.intrinsic buf GetIntrinsicByName drop PushOp
+                
             // -- KEYWORDS --------------------
-            buf "if" streq if
+            orelse buf "if" streq if
                 OpCount r64 ParseBlockStackPush
                 OpType.if 0 PushOp
             orelse buf "else" streq if
@@ -678,11 +698,7 @@ fun ParseFile ptr ->
 
                 drop drop
 
-            // -- INTEGER ---------------------
-            orelse buf ParseInteger swap drop if
-                OpType.push buf ParseInteger drop PushOp
             else
-
                 lexer Lexer.PrintLoc
 
                 " ERROR: unknown word '" print
@@ -691,7 +707,10 @@ fun ParseFile ptr ->
 
                 1 exit
             end
+        orelse dup TokenType.integer = if
+            OpType.push buf ParseInteger drop PushOp
         end
+        drop
     end
 
     ParseBlockStackCount r64 0 != if
