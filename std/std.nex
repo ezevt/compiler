@@ -386,7 +386,7 @@ fun sbrk int -- ptr ->
 end
 
 fun malloc int -- ptr -> // TODO: implement better malloc
-    sbrk
+    dup sbrk swap -
 end
 
 const timespec 16 end
@@ -540,12 +540,12 @@ fun ParseInteger ptr -- int bool ->
 end
 
 fun memset
-    int // value
     ptr // memory
+    int // value
     int // size
 ->
     alloc value u64 end
-    rot value s64
+    swap value s64
 
     while dup 0 > do
         over over 1 - +
@@ -553,6 +553,25 @@ fun memset
 
         1 -
     end drop drop
+end
+
+fun memcpy
+    ptr // dst
+    ptr // src
+    int // size
+->
+    alloc src pointer end
+    alloc dst pointer end
+    swap src s64
+    swap dst s64
+
+    while dup 0 > do
+        src r64 cast_ptr r8
+        dst r64 cast_ptr s8
+        src inc64
+        dst inc64
+        1 -
+    end drop
 end
 
 fun StrTrimLeft ptr -> // ptr to ptr(str)

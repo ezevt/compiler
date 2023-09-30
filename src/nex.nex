@@ -562,6 +562,47 @@ fun ParseBlockStackPop -- int ->
     r64
 end
 
+const Constant 16 end // ptr u64
+fun Constant.name  ptr -- ptr -> 0 + end // ptr
+fun Constant.value ptr -- ptr -> 8 + end // u64
+
+const CONSTANTS_CAP 1024 end
+alloc Constants CONSTANTS_CAP Constant * end
+alloc ConstantCount u64 end
+0 ConstantCount s64
+
+fun PushConstant ptr int -> // name value
+    ConstantCount r64 Constant * Constants +
+    dup Constant.value rot swap s64
+    dup Constant.name  rot swap s64
+    drop
+    ConstantCount inc64
+end
+
+fun FindConstant ptr -- int bool -> // name -- value ?found
+    alloc name pointer end
+    name s64
+
+    0 while
+        dup ConstantCount r64 < if
+            dup Constant * Constants +
+            Constant.name r64 cast_ptr name r64 cast_ptr streq lnot
+        else
+            false
+        end
+    do
+        1 +
+    end
+
+    dup ConstantCount r64 < if
+        Constant * Constants +
+        Constant.value r64 true
+    else
+        drop
+        0 false
+    end
+end
+
 fun CheckNameRedefinition ptr ptr -> // name lexer
     over IsKeyword if
         Lexer.PrintLoc
@@ -570,6 +611,10 @@ fun CheckNameRedefinition ptr ptr -> // name lexer
     orelse over GetIntrinsicByName swap drop if
         Lexer.PrintLoc
         " ERROR: refefinition of the intrinsic '" print print "'\n" print
+        1 exit
+    orelse over FindConstant swap drop if
+        Lexer.PrintLoc
+        " ERROR: refefinition of the constant '" print print "'\n" print
         1 exit
     else
         drop drop
@@ -623,7 +668,7 @@ fun ParseFile ptr ->
     filepath r64 cast_ptr content r64 cast_ptr lexer Lexer.Construct
     
     while
-        0 buf 256 memset
+        buf 0 256 memset
         buf lexer Lexer.NextToken
         dup tokenType s64
         TokenType.eof !=
@@ -713,7 +758,7 @@ fun ParseFile ptr ->
                 drop drop
 
             orelse buf "const" streq if
-                0 buf 256 memset
+                buf 0 256 memset
                 buf lexer Lexer.NextToken
                 TokenType.word != if
                     lexer Lexer.PrintLoc
@@ -723,7 +768,10 @@ fun ParseFile ptr ->
 
                 buf lexer CheckNameRedefinition
 
-                0 buf 256 memset
+                buf strlen 1 + malloc
+                dup buf dup strlen 1 + memcpy
+
+                buf 0 256 memset
                 buf lexer Lexer.NextToken
 
                 TokenType.integer != if
@@ -732,9 +780,9 @@ fun ParseFile ptr ->
                     1 exit
                 end
 
-                buf ParseInteger drop dump
+                buf ParseInteger drop
 
-                0 buf 256 memset
+                buf 0 256 memset
                 buf lexer Lexer.NextToken
                 drop
 
@@ -743,12 +791,21 @@ fun ParseFile ptr ->
                     " ERROR: expected 'end' keyword\n" print
                     1 exit
                 end
+
+                PushConstant
             else
-                lexer Lexer.PrintLoc
-                " ERROR: unknown word '" print
-                buf print
-                "'\n" print
-                1 exit
+                buf FindConstant if
+                    OpType.push swap PushOp
+                else
+                    drop
+                    lexer Lexer.PrintLoc
+                    " ERROR: unknown word '" print
+                    buf print
+                    "'\n" print
+                    1 exit
+                end
+
+                
             end
         orelse dup TokenType.integer = if
             OpType.push buf ParseInteger drop PushOp

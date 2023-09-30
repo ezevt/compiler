@@ -1,6 +1,6 @@
-const iters 10 end
+const iters 3 end
 
-10 while dup 0 > do
+iters while dup 0 > do
     dup dump
     1 -
 end drop
