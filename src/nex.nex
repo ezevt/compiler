@@ -632,6 +632,9 @@ end
 
 fun EvalConstant ptr -- int -> // lexer -- value
     alloc buf 256 end
+
+    0 EvalConstantStackCount s64
+
     while
         buf 0 256 memset
         buf over Lexer.NextToken 
