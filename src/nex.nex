@@ -1,12 +1,13 @@
 include "std/std.nex"
 
 const OpType.push       0 end
-const OpType.intrinsic  1 end
-const OpType.if         2 end
-const OpType.else       3 end
-const OpType.while      4 end
-const OpType.do         5 end
-const OpType.end        6 end
+const OpType.push_addr   1 end
+const OpType.intrinsic  2 end
+const OpType.if         3 end
+const OpType.else       4 end
+const OpType.while      5 end
+const OpType.do         6 end
+const OpType.end        7 end
 
 const Op 16 end // u64 u64
 fun Op.type  ptr -- ptr ->  0 + end // u64
@@ -85,6 +86,9 @@ fun IsKeyword ptr -- bool ->
     name r64 cast_ptr "end"   streq or
     name r64 cast_ptr "const" streq or
 end
+
+alloc MemoryCapacity u64 end
+0 MemoryCapacity s64
 
 const OP_CAP 1024 end
 alloc OpBuf Op OP_CAP * end
@@ -214,6 +218,10 @@ fun GenerateAssembly ->
 
         dup Op.type r64 OpType.push = if
             "    mov rax, "                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
+            "    push rax\n"                out r64 fprint
+        orelse dup Op.type r64 OpType.push_addr = if
+            "    mov rax, mem\n"            out r64 fprint
+            "    add rax, "                 out r64 fprint dup Op.value r64 out r64 fprintd "\n" out r64 fprint
             "    push rax\n"                out r64 fprint
         orelse dup Op.type r64 OpType.if = if
             "    pop rax\n"                 out r64 fprint
@@ -402,13 +410,17 @@ fun GenerateAssembly ->
         1 +
     end drop
 
-    "addr_" out r64 fprint
+    "addr_"     out r64 fprint
     OpCount r64 out r64 fprintd
-    ":\n" out r64 fprint
+    ":\n"       out r64 fprint
 
     "    mov rax, 60\n" out r64 fprint
-    "    mov rdi, 0\n" out r64 fprint
-    "    syscall\n" out r64 fprint
+    "    mov rdi, 0\n"  out r64 fprint
+    "    syscall\n"     out r64 fprint
+    "    syscall\n"     out r64 fprint
+
+    "segment .bss\n"     out r64 fprint
+    "    mem: resb "     out r64 fprint MemoryCapacity r64 out r64 fprintd "\n" out r64 fprint
 
     alloc nasmArgv pointer 4 * end
     "/usr/bin/nasm"     nasmArgv 0 pointer * + s64
@@ -603,6 +615,47 @@ fun FindConstant ptr -- int bool -> // name -- value ?found
     end
 end
 
+const Allocation 16 end // ptr u64
+fun Allocation.name  ptr -- ptr -> 0 + end // ptr
+fun Allocation.value ptr -- ptr -> 8 + end // u64
+
+const ALLOCATIONS_CAP 1024 end
+alloc Allocations ALLOCATIONS_CAP Allocation * end
+alloc AllocationCount u64 end
+0 AllocationCount s64
+
+fun PushAllocation ptr int -> // name value
+    AllocationCount r64 Allocation * Allocations +
+    dup Allocation.value rot swap s64
+    dup Allocation.name  rot swap s64
+    drop
+    AllocationCount inc64
+end
+
+fun FindAllocation ptr -- int bool -> // name -- value ?found
+    alloc name pointer end
+    name s64
+
+    0 while
+        dup AllocationCount r64 < if
+            dup Allocation * Allocations +
+            Allocation.name r64 cast_ptr name r64 cast_ptr streq lnot
+        else
+            false
+        end
+    do
+        1 +
+    end
+
+    dup AllocationCount r64 < if
+        Allocation * Allocations +
+        Allocation.value r64 true
+    else
+        drop
+        0 false
+    end
+end
+
 const EVAL_CONSTANT_STACK_CAP 64 end
 alloc EvalConstantStack u64 EVAL_CONSTANT_STACK_CAP * end
 alloc EvalConstantStackCount u64 end
@@ -730,6 +783,10 @@ fun CheckNameRedefinition ptr ptr -> // name lexer
     orelse over FindConstant swap drop if
         Lexer.PrintLoc
         " ERROR: refefinition of the constant '" print print "'\n" print
+        1 exit
+    orelse over FindAllocation swap drop if
+        Lexer.PrintLoc
+        " ERROR: refefinition of the allocation '" print print "'\n" print
         1 exit
     else
         drop drop
@@ -889,9 +946,31 @@ fun ParseFile ptr ->
                 lexer EvalConstant
 
                 PushConstant
+            orelse buf "alloc" streq if
+                buf 0 256 memset
+                buf lexer Lexer.NextToken
+                TokenType.word != if
+                    lexer Lexer.PrintLoc
+                    " ERROR: expected name\n" print
+                    1 exit
+                end
+
+                buf lexer CheckNameRedefinition
+
+                buf strlen 1 + malloc
+                dup buf dup strlen 1 + memcpy
+
+                MemoryCapacity r64
+                dup
+                lexer EvalConstant
+                + MemoryCapacity s64
+                
+                PushAllocation
             else
                 buf FindConstant if
                     OpType.push swap PushOp
+                else drop buf FindAllocation if
+                    OpType.push_addr swap PushOp
                 else
                     drop
                     lexer Lexer.PrintLoc
@@ -899,7 +978,7 @@ fun ParseFile ptr ->
                     buf print
                     "'\n" print
                     1 exit
-                end
+                end end
 
                 
             end

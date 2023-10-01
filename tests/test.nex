@@ -1,6 +1,10 @@
 const mul 4 end
 const iters 2 mul * end
 
+const u64 8 end
+alloc buf u64 end
+buf dump
+
 iters while dup 0 > do
     dup dump
     1 -
