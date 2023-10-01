@@ -695,14 +695,20 @@ fun EvalConstant ptr -- int -> // lexer -- value
 
                 EvalConstantStackPop drop
             else
-                dup Lexer.PrintLoc
-                " ERROR: unsupported word '" print buf print "' in constant evaluation\n" print
-                1 exit
+                buf FindConstant if
+                    EvalConstantStackPush
+                else
+                    drop
+                    
+                    dup Lexer.PrintLoc
+                    " ERROR: unsupported word '" print buf print "' in constant evaluation\n" print
+                    1 exit
+                end
             end
         end
     end
 
-    EvalConstantStackCount r64 0 = if
+    EvalConstantStackCount r64 1 != if
         dup Lexer.PrintLoc
         " ERROR: compile-time evaluation must be a single number\n" print
         1 exit

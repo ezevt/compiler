@@ -1,4 +1,5 @@
-const iters 5 2 * end
+const mul 4 end
+const iters 2 mul * end
 
 iters while dup 0 > do
     dup dump
