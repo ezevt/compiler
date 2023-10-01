@@ -603,6 +603,112 @@ fun FindConstant ptr -- int bool -> // name -- value ?found
     end
 end
 
+const EVAL_CONSTANT_STACK_CAP 64 end
+alloc EvalConstantStack u64 EVAL_CONSTANT_STACK_CAP * end
+alloc EvalConstantStackCount u64 end
+0 EvalConstantStackCount s64
+
+fun EvalConstantStackPush int ->
+    EvalConstantStackCount r64 EVAL_CONSTANT_STACK_CAP >= if
+        "ERROR: eval constant stack overflow\n" eprint
+        1 exit
+    end
+
+    EvalConstantStackCount r64 u64 * EvalConstantStack +
+    s64
+    EvalConstantStackCount inc64
+end
+
+fun EvalConstantStackPop -- int ->
+    EvalConstantStackCount r64 0 <= if
+        "ERROR: eval constant stack underflow\n" eprint
+        1 exit
+    end
+
+    EvalConstantStackCount dec64
+    EvalConstantStackCount r64 u64 * EvalConstantStack +
+    r64
+end
+
+fun EvalConstant ptr -- int -> // lexer -- value
+    alloc buf 256 end
+    while
+        buf 0 256 memset
+        buf over Lexer.NextToken 
+        TokenType.eof = if
+            false
+        else
+            buf "end" streq if
+                false
+            else
+                true
+            end
+        end
+    do
+        // Implement plus minus mul drop
+        buf ParseInteger if
+            EvalConstantStackPush
+        else
+            drop
+            buf "+" streq if
+                EvalConstantStackCount r64 2 < if
+                    dup Lexer.PrintLoc
+                    " ERROR: not enough arguments for the '" print buf print "' intrinsic\n" print
+                    1 exit
+                end
+
+                EvalConstantStackPop
+                EvalConstantStackPop
+                +
+                EvalConstantStackPush
+            orelse buf "-" streq if
+                EvalConstantStackCount r64 2 < if
+                    dup Lexer.PrintLoc
+                    " ERROR: not enough arguments for the '" print buf print "' intrinsic\n" print
+                    1 exit
+                end
+
+                EvalConstantStackPop
+                EvalConstantStackPop
+                swap -
+                EvalConstantStackPush
+            orelse buf "*" streq if
+                EvalConstantStackCount r64 2 < if
+                    dup Lexer.PrintLoc
+                    " ERROR: not enough arguments for the '" print buf print "' intrinsic\n" print
+                    1 exit
+                end
+
+                EvalConstantStackPop
+                EvalConstantStackPop
+                *
+                EvalConstantStackPush
+            orelse buf "drop" streq if
+                EvalConstantStackCount r64 1 < if
+                    dup Lexer.PrintLoc
+                    " ERROR: not enough arguments for the '" print buf print "' intrinsic\n" print
+                    1 exit
+                end
+
+                EvalConstantStackPop drop
+            else
+                dup Lexer.PrintLoc
+                " ERROR: unsupported word '" print buf print "' in constant evaluation\n" print
+                1 exit
+            end
+        end
+    end
+
+    EvalConstantStackCount r64 0 = if
+        dup Lexer.PrintLoc
+        " ERROR: compile-time evaluation must be a single number\n" print
+        1 exit
+    end
+
+    drop
+    EvalConstantStackPop
+end
+
 fun CheckNameRedefinition ptr ptr -> // name lexer
     over IsKeyword if
         Lexer.PrintLoc
@@ -771,26 +877,7 @@ fun ParseFile ptr ->
                 buf strlen 1 + malloc
                 dup buf dup strlen 1 + memcpy
 
-                buf 0 256 memset
-                buf lexer Lexer.NextToken
-
-                TokenType.integer != if
-                    lexer Lexer.PrintLoc
-                    " ERROR: expected value\n" print
-                    1 exit
-                end
-
-                buf ParseInteger drop
-
-                buf 0 256 memset
-                buf lexer Lexer.NextToken
-                drop
-
-                buf "end" streq lnot if
-                    lexer Lexer.PrintLoc
-                    " ERROR: expected 'end' keyword\n" print
-                    1 exit
-                end
+                lexer EvalConstant
 
                 PushConstant
             else
