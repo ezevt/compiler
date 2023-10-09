@@ -3,7 +3,8 @@ const iters 2 mul * end
 
 const u64 8 end
 alloc buf u64 end
-buf dump
+10 buf s64
+buf r64 dump
 
 iters while dup 0 > do
     dup dump

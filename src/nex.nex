@@ -1,7 +1,7 @@
 include "std/std.nex"
 
 const OpType.push       0 end
-const OpType.push_addr   1 end
+const OpType.push_addr  1 end
 const OpType.intrinsic  2 end
 const OpType.if         3 end
 const OpType.else       4 end
@@ -38,6 +38,14 @@ const Intrinsic.syscall3    21 end
 const Intrinsic.syscall4    22 end
 const Intrinsic.syscall5    23 end
 const Intrinsic.syscall6    24 end
+const Intrinsic.read8       25 end
+const Intrinsic.store8      26 end
+const Intrinsic.read16      27 end
+const Intrinsic.store16     28 end
+const Intrinsic.read32      29 end
+const Intrinsic.store32     30 end
+const Intrinsic.read64      31 end
+const Intrinsic.store64     32 end
 
 fun GetIntrinsicByName ptr -- int bool ->
     alloc name pointer end
@@ -69,6 +77,14 @@ fun GetIntrinsicByName ptr -- int bool ->
     orelse name r64 cast_ptr "syscall4"   streq if Intrinsic.syscall4
     orelse name r64 cast_ptr "syscall5"   streq if Intrinsic.syscall5
     orelse name r64 cast_ptr "syscall6"   streq if Intrinsic.syscall6
+    orelse name r64 cast_ptr "r8"         streq if Intrinsic.read8
+    orelse name r64 cast_ptr "s8"         streq if Intrinsic.store8
+    orelse name r64 cast_ptr "r16"        streq if Intrinsic.read16
+    orelse name r64 cast_ptr "s16"        streq if Intrinsic.store16
+    orelse name r64 cast_ptr "r32"        streq if Intrinsic.read32
+    orelse name r64 cast_ptr "s32"        streq if Intrinsic.store32
+    orelse name r64 cast_ptr "r64"        streq if Intrinsic.read64
+    orelse name r64 cast_ptr "s64"        streq if Intrinsic.store64
     else
         drop false 0
     end
@@ -396,6 +412,42 @@ fun GenerateAssembly ->
                 "    pop r9\n"                  out r64 fprint
                 "    syscall\n"                 out r64 fprint
                 "    push rax\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.read8 = if
+                "    pop rax\n"                 out r64 fprint
+                "    xor rbx, rbx\n"            out r64 fprint
+                "    mov bl, [rax]\n"           out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.store8 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    mov [rax], bl\n"           out r64 fprint
+            orelse dup Op.value r64 Intrinsic.read16 = if
+                "    pop rax\n"                 out r64 fprint
+                "    xor rbx, rbx\n"            out r64 fprint
+                "    mov bx, [rax]\n"           out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.store16 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    mov [rax], bx\n"           out r64 fprint
+            orelse dup Op.value r64 Intrinsic.read32 = if
+                "    pop rax\n"                 out r64 fprint
+                "    xor rbx, rbx\n"            out r64 fprint
+                "    mov ebx, [rax]\n"          out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.store32 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    mov [rax], ebx\n"          out r64 fprint
+            orelse dup Op.value r64 Intrinsic.read64 = if
+                "    pop rax\n"                 out r64 fprint
+                "    xor rbx, rbx\n"            out r64 fprint
+                "    mov rbx, [rax]\n"           out r64 fprint
+                "    push rbx\n"                out r64 fprint
+            orelse dup Op.value r64 Intrinsic.store64 = if
+                "    pop rax\n"                 out r64 fprint
+                "    pop rbx\n"                 out r64 fprint
+                "    mov [rax], rbx\n"           out r64 fprint
             else
                 "ERROR: unreachable intrinsic\n" eprint
                 1 exit
